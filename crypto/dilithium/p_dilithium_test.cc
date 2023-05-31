@@ -358,14 +358,14 @@ static const uint8_t kPublicKeySPKI[] = {
 TEST(Dilithium3Test, KeyGeneration) {
   // Basic key generation tests for Dilithium3
   // Generate a Dilithium3 key
-  EVP_PKEY_CTX *dilithium_pkey_ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_DILITHIUM3, nullptr);
+  bssl::UniquePtr<EVP_PKEY_CTX> dilithium_pkey_ctx(EVP_PKEY_CTX_new_id(EVP_PKEY_DILITHIUM3, nullptr));
   ASSERT_NE(dilithium_pkey_ctx, nullptr);
 
-  EVP_PKEY *dilithium_pkey = EVP_PKEY_new();
+  bssl::UniquePtr<EVP_PKEY> dilithium_pkey(EVP_PKEY_new());
   ASSERT_NE(dilithium_pkey, nullptr);
 
-  EXPECT_TRUE(EVP_PKEY_keygen_init(dilithium_pkey_ctx));
-  EXPECT_TRUE(EVP_PKEY_keygen(dilithium_pkey_ctx, &dilithium_pkey));
+  EXPECT_TRUE(EVP_PKEY_keygen_init(dilithium_pkey_ctx.get()));
+  EXPECT_TRUE(EVP_PKEY_keygen(dilithium_pkey_ctx.get(), &dilithium_pkey.get()));
   ASSERT_NE(dilithium_pkey->pkey.ptr, nullptr);
 
   const DILITHIUM3_KEY *dilithium3Key = (DILITHIUM3_KEY *)(dilithium_pkey->pkey.ptr);
@@ -374,15 +374,15 @@ TEST(Dilithium3Test, KeyGeneration) {
   // Extract public key and check it is of the correct size
   uint8_t *buf = nullptr;
   size_t buf_size;
-  EXPECT_TRUE(EVP_PKEY_get_raw_public_key(dilithium_pkey, buf, &buf_size));
+  EXPECT_TRUE(EVP_PKEY_get_raw_public_key(dilithium_pkey.get(), buf, &buf_size));
   EXPECT_EQ((size_t)DILITHIUM3_PUBLIC_KEY_BYTES, buf_size);
 
   buf = (uint8_t *)OPENSSL_malloc(buf_size);
   ASSERT_NE(buf, nullptr);
-  EXPECT_TRUE(EVP_PKEY_get_raw_public_key(dilithium_pkey, buf, &buf_size));
+  EXPECT_TRUE(EVP_PKEY_get_raw_public_key(dilithium_pkey.get(), buf, &buf_size));
 
   buf_size = 0;
-  EXPECT_FALSE(EVP_PKEY_get_raw_public_key(dilithium_pkey, buf, &buf_size));
+  EXPECT_FALSE(EVP_PKEY_get_raw_public_key(dilithium_pkey.get(), buf, &buf_size));
 
   uint32_t err = ERR_get_error();
   EXPECT_EQ(ERR_LIB_EVP, ERR_GET_LIB(err));
@@ -391,55 +391,51 @@ TEST(Dilithium3Test, KeyGeneration) {
   buf = nullptr;
 
   // Extract private key and check it is of the correct size
-  EXPECT_TRUE(EVP_PKEY_get_raw_private_key(dilithium_pkey, buf, &buf_size));
+  EXPECT_TRUE(EVP_PKEY_get_raw_private_key(dilithium_pkey.get(), buf, &buf_size));
   EXPECT_EQ((size_t)DILITHIUM3_PRIVATE_KEY_BYTES, buf_size);
 
   buf = (uint8_t *)OPENSSL_malloc(buf_size);
   ASSERT_NE(buf, nullptr);
-  EXPECT_TRUE(EVP_PKEY_get_raw_private_key(dilithium_pkey, buf, &buf_size));
+  EXPECT_TRUE(EVP_PKEY_get_raw_private_key(dilithium_pkey.get(), buf, &buf_size));
 
   buf_size = 0;
-  EXPECT_FALSE(EVP_PKEY_get_raw_private_key(dilithium_pkey, buf, &buf_size));
+  EXPECT_FALSE(EVP_PKEY_get_raw_private_key(dilithium_pkey.get(), buf, &buf_size));
   err = ERR_get_error();
   EXPECT_EQ(ERR_LIB_EVP, ERR_GET_LIB(err));
   EXPECT_EQ(EVP_R_BUFFER_TOO_SMALL, ERR_GET_REASON(err));
   OPENSSL_free(buf);
-
-  EVP_PKEY_CTX_free(dilithium_pkey_ctx);
-  EVP_PKEY_free(dilithium_pkey);
 }
 
 TEST(Dilithium3Test, KeyComparison) {
   // Generate two Dilithium3 keys are check that they are not equal.
-  EVP_PKEY_CTX *dilithium_pkey_ctx1 = EVP_PKEY_CTX_new_id(EVP_PKEY_DILITHIUM3, nullptr);
+  bssl::UniquePtr<EVP_PKEY_CTX> dilithium_pkey_ctx1(EVP_PKEY_CTX_new_id(EVP_PKEY_DILITHIUM3, nullptr));
   ASSERT_NE(dilithium_pkey_ctx1, nullptr);
 
-  EVP_PKEY *dilithium_pkey1 = EVP_PKEY_new();
+  bssl::UniquePtr<EVP_PKEY> dilithium_pkey1(EVP_PKEY_new());
   ASSERT_NE(dilithium_pkey1, nullptr);
 
-  EXPECT_TRUE(EVP_PKEY_keygen_init(dilithium_pkey_ctx1));
-  EXPECT_TRUE(EVP_PKEY_keygen(dilithium_pkey_ctx1, &dilithium_pkey1));
+  EXPECT_TRUE(EVP_PKEY_keygen_init(dilithium_pkey_ctx1.get()));
+  EXPECT_TRUE(EVP_PKEY_keygen(dilithium_pkey_ctx.get1(), &dilithium_pkey1.get()));
   ASSERT_NE(dilithium_pkey1->pkey.ptr, nullptr);
 
-  EVP_PKEY_CTX *dilithium_pkey_ctx2 = EVP_PKEY_CTX_new_id(EVP_PKEY_DILITHIUM3, nullptr);
+  bssl::UniquePtr<EVP_PKEY_CTX> dilithium_pkey_ctx2(EVP_PKEY_CTX_new_id(EVP_PKEY_DILITHIUM3, nullptr));
   ASSERT_NE(dilithium_pkey_ctx2, nullptr);
 
-  EVP_PKEY *dilithium_pkey2 = EVP_PKEY_new();
+  bssl::UniquePtr<EVP_PKEY> dilithium_pkey2(EVP_PKEY_new());
   ASSERT_NE(dilithium_pkey2, nullptr);
 
-  EXPECT_TRUE(EVP_PKEY_keygen_init(dilithium_pkey_ctx2));
-  EXPECT_TRUE(EVP_PKEY_keygen(dilithium_pkey_ctx2, &dilithium_pkey2));
+  EXPECT_TRUE(EVP_PKEY_keygen_init(dilithium_pkey_ctx2.get()));
+  EXPECT_TRUE(EVP_PKEY_keygen(dilithium_pkey_ctx2.get(), &dilithium_pkey2.get()));
   ASSERT_NE(dilithium_pkey2->pkey.ptr, nullptr);
 
-  EXPECT_EQ(0, EVP_PKEY_cmp(dilithium_pkey1, dilithium_pkey2));
-
-  EVP_PKEY_free(dilithium_pkey1);
-  EVP_PKEY_free(dilithium_pkey2);
-  EVP_PKEY_CTX_free(dilithium_pkey_ctx1);
-  EVP_PKEY_CTX_free(dilithium_pkey_ctx2);
+  EXPECT_EQ(0, EVP_PKEY_cmp(dilithium_pkey1.get(), dilithium_pkey2.get()));
 }
 
 TEST(Dilithium3Test, NewKeyFromBytes) {
+
+  //bssl::UniquePtr<EVP_PKEY> dilithium_pkey(EVP_PKEY_new());
+  //bssl::UniquePtr<EVP_PKEY_CTX> dilithium_pkey_ctx(EVP_PKEY_CTX_new_id(EVP_PKEY_DILITHIUM3, nullptr));
+
   // Test the generation of a Dilithium3 key from bytes
   // Source key
   EVP_PKEY_CTX *dilithium_pkey_ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_DILITHIUM3, nullptr);
@@ -581,6 +577,10 @@ TEST(Dilithium3Test, Encoding) {
 }
 
 TEST(Dilithium3Test, Decoding) {
+
+  //bssl::UniquePtr<EVP_PKEY> dilithium_pkey(EVP_PKEY_new());
+  //bssl::UniquePtr<EVP_PKEY_CTX> dilithium_pkey_ctx(EVP_PKEY_CTX_new_id(EVP_PKEY_DILITHIUM3, nullptr));
+
   // Generate a Dilithium3 public key based on the public key bytes
   bssl::UniquePtr<EVP_PKEY> pubkey(EVP_PKEY_new_raw_public_key(
       EVP_PKEY_DILITHIUM3, nullptr, kPublicKey, sizeof(kPublicKey)));
@@ -617,6 +617,10 @@ TEST(Dilithium3Test, Decoding) {
 }
 
 TEST(Dilithium3Test, SIGOperations) {
+
+  //bssl::UniquePtr<EVP_PKEY> dilithium_pkey(EVP_PKEY_new());
+  //bssl::UniquePtr<EVP_PKEY_CTX> dilithium_pkey_ctx(EVP_PKEY_CTX_new_id(EVP_PKEY_DILITHIUM3, nullptr));
+
   // Test basic functionality for Dilithium3
   // Generate a Dilithium3 key
   EVP_PKEY_CTX *dilithium_pkey_ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_DILITHIUM3, nullptr);
@@ -700,6 +704,9 @@ static void RunKat(FileTest *t)
   pq_custom_randombytes_use_deterministic_for_testing();
   pq_custom_randombytes_init_for_testing(seed.data());
 
+  //bssl::UniquePtr<EVP_PKEY> dilithium_pkey(EVP_PKEY_new());
+  //bssl::UniquePtr<EVP_PKEY_CTX> dilithium_pkey_ctx(EVP_PKEY_CTX_new_id(EVP_PKEY_DILITHIUM3, nullptr));
+
   // Generate our dilithium public and private key pair
   EVP_PKEY_CTX *dilithium_pkey_ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_DILITHIUM3, nullptr);
   ASSERT_NE(dilithium_pkey_ctx, nullptr);
@@ -739,9 +746,8 @@ TEST(Dilithium3Test, KAT) {
 TEST(Dilithium3Test, EvpDisabled) {
   ASSERT_EQ(nullptr, EVP_PKEY_CTX_new_id(NID_DILITHIUM3_R3, nullptr));
 
-  EVP_PKEY *pkey = EVP_PKEY_new();
-  ASSERT_FALSE(EVP_PKEY_set_type(pkey, NID_DILITHIUM3_R3));
-  EVP_PKEY_free(pkey);
+  bssl::UniquePtr<EVP_PKEY> dilithium_pkey(EVP_PKEY_new());
+  EXPECT_FALSE(EVP_PKEY_set_type(pkey, NID_DILITHIUM3_R3));
 }
 
 #endif
