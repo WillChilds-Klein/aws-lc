@@ -123,7 +123,7 @@ mkdir -p ${AWS_LC_BUILD_FOLDER} ${AWS_LC_INSTALL_FOLDER}
 
 aws_lc_build ${SRC_ROOT} ${AWS_LC_BUILD_FOLDER} ${AWS_LC_INSTALL_FOLDER} \
     -DBUILD_TESTING=OFF \
-    -DBUILD_SHARED_LIBS=0
+    -DBUILD_SHARED_LIBS=ON
 
 # Some systems install under "lib64" instead of "lib"
 ln -s ${AWS_LC_INSTALL_FOLDER}/lib64 ${AWS_LC_INSTALL_FOLDER}/lib
