@@ -192,9 +192,9 @@ static int enc_write(BIO *b, const char *in, int inl) {
 
 static long enc_ctrl(BIO *b, int cmd, long num, void *ptr) {
   GUARD_PTR(b);
+  EVP_CIPHER_CTX **cipher_ctx;
   long ret = 1;
   BIO_ENC_CTX *ctx = BIO_get_data(b);
-  EVP_CIPHER_CTX **cipher_ctx;
   BIO *next = BIO_next(b);
   if (ctx == NULL) {
     return 0;
@@ -238,9 +238,6 @@ static long enc_ctrl(BIO *b, int cmd, long num, void *ptr) {
       ret = BIO_ctrl(next, cmd, num, ptr);
       BIO_copy_next_retry(b);
       break;
-    case BIO_C_GET_CIPHER_STATUS:
-      ret = (long)ctx->ok;
-      break;
     case BIO_C_GET_CIPHER_CTX:
       cipher_ctx = (EVP_CIPHER_CTX **)ptr;
       if (!cipher_ctx) {
@@ -249,6 +246,9 @@ static long enc_ctrl(BIO *b, int cmd, long num, void *ptr) {
       }
       *cipher_ctx = ctx->cipher;
       BIO_set_init(b, 1);
+      break;
+    case BIO_C_GET_CIPHER_STATUS:
+      ret = (long)ctx->ok;
       break;
     // OpenSSL implements these, but because we don't need them and cipher BIO
     // is internal, we can fail loudly if they're called. If this case is hit,
@@ -283,7 +283,7 @@ int BIO_set_cipher(BIO *b, const EVP_CIPHER *c, const unsigned char *key,
   const EVP_CIPHER *kSupportedCiphers[] = {
       EVP_aes_128_cbc(),       EVP_aes_128_ctr(), EVP_aes_128_ofb(),
       EVP_aes_256_cbc(),       EVP_aes_256_ctr(), EVP_aes_256_ofb(),
-      EVP_chacha20_poly1305(),
+      EVP_chacha20_poly1305(), EVP_des_ede3_cbc(),
   };
   const size_t kSupportedCiphersCount =
       sizeof(kSupportedCiphers) / sizeof(EVP_CIPHER *);

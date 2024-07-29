@@ -1351,22 +1351,6 @@ OPENSSL_EXPORT OPENSSL_DEPRECATED int EVP_PKEY_CTX_set_dsa_paramgen_q_bits(
 OPENSSL_EXPORT OPENSSL_DEPRECATED int EVP_PKEY_CTX_ctrl_str(EVP_PKEY_CTX *ctx, const char *type,
                               const char *value);
 
-// EVP_PKEY_CTX keygen no-ops [Deprecated].
-
-typedef int EVP_PKEY_gen_cb(EVP_PKEY_CTX *ctx);
-
-// EVP_PKEY_CTX_set_cb is a no-op.
-OPENSSL_EXPORT void EVP_PKEY_CTX_set_cb(EVP_PKEY_CTX *ctx, EVP_PKEY_gen_cb *cb);
-
-// EVP_PKEY_CTX_set_app_data is a no-op.
-OPENSSL_EXPORT void EVP_PKEY_CTX_set_app_data(EVP_PKEY_CTX *ctx, void *data);
-
-// EVP_PKEY_CTX_get_app_data is a no-op. Return value is |NULL|.
-OPENSSL_EXPORT void *EVP_PKEY_CTX_get_app_data(EVP_PKEY_CTX *ctx);
-
-//  EVP_PKEY_CTX_get_keygen_info is a no-op. Return value is 0.
-OPENSSL_EXPORT int EVP_PKEY_CTX_get_keygen_info(EVP_PKEY_CTX *ctx, int idx);
-
 // Preprocessor compatibility section (hidden).
 //
 // Historically, a number of APIs were implemented in OpenSSL as macros and
