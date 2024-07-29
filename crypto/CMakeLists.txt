@@ -466,6 +466,8 @@ add_library(
   pkcs7/bio/md.c
   pkcs7/pkcs7.c
   pkcs7/pkcs7_asn1.c
+  pkcs7/pkcs7_internal_bio_md.c
+  pkcs7/pkcs7_internal_bio_cipher.c
   pkcs7/pkcs7_x509.c
   pkcs8/pkcs8.c
   pkcs8/pkcs8_x509.c
