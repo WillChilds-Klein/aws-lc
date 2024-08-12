@@ -192,6 +192,13 @@ OPENSSL_EXPORT int PKCS7_type_is_signed(const PKCS7 *p7);
 OPENSSL_EXPORT int PKCS7_type_is_signedAndEnveloped(const PKCS7 *p7);
 
 
+// TODO [childw]
+int PKCS7_decrypt(PKCS7 *p7, EVP_PKEY *pkey, X509 *cert, BIO *data, int flags);
+PKCS7 *PKCS7_encrypt(STACK_OF(X509) *certs, BIO *in, const EVP_CIPHER *cipher, int flags);
+int PKCS7_verify(PKCS7 *p7, STACK_OF(X509) *certs, X509_STORE *store, BIO *indata, BIO *out, int flags);
+BIO *PKCS7_dataInit(PKCS7 *p7, BIO *bio);
+int PKCS7_dataFinal(PKCS7 *p7, BIO *bio);
+
 // PKCS7_sign [Deprecated]
 //
 // Only |PKCS7_DETACHED| and a combination of

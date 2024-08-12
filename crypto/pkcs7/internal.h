@@ -100,6 +100,18 @@ int pkcs7_add_signed_data(CBB *out,
                           const void *arg);
 
 
+STACK_OF(X509) *PKCS7_get0_signers(PKCS7 *p7, STACK_OF(X509) *certs, int flags);
+int PKCS7_is_detached(PKCS7 *p7);
+ASN1_OCTET_STRING *PKCS7_get_octet_string(PKCS7 *p7);
+int PKCS7_type_is_other(const PKCS7 *p7);
+
+#define BIO_get_cipher_ctx(bio, contents) BIO_ctrl(bio, BIO_C_GET_CIPHER_CTX, 0, \
+                                                (char *)(contents))
+
+#define BIO_get_cipher_status(bio, contents) BIO_ctrl(bio, BIO_C_GET_CIPHER_STATUS, 0, \
+                                                (char *)(contents))
+
+
 #if defined(__cplusplus)
 }  // extern C
 #endif
