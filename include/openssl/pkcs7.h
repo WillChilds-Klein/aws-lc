@@ -244,6 +244,10 @@ int PKCS7_dataFinal(PKCS7 *p7, BIO *bio);
 #define PKCS7_NOINTERN 0x10
 #define PKCS7_NOVERIFY 0x20
 
+
+#define PKCS7_NO_DUAL_CONTENT 0x40
+#define PKCS7_NOCRL 0x80
+
 // PKCS7_sign can operate in two modes to provide some backwards compatibility:
 //
 // The first mode assembles |certs| into a PKCS#7 signed data ContentInfo with

@@ -105,6 +105,11 @@ int PKCS7_is_detached(PKCS7 *p7);
 ASN1_OCTET_STRING *PKCS7_get_octet_string(PKCS7 *p7);
 int PKCS7_type_is_other(const PKCS7 *p7);
 
+const BIO_METHOD *BIO_f_md(void);
+//const BIO_METHOD *BIO_s_cipher();
+
+#define BIO_get_md_ctx(b,mdcp)     BIO_ctrl(b,BIO_C_GET_MD_CTX,0,(mdcp))
+
 #define BIO_get_cipher_ctx(bio, contents) BIO_ctrl(bio, BIO_C_GET_CIPHER_CTX, 0, \
                                                 (char *)(contents))
 

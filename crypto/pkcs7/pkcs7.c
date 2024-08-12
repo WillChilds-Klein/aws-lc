@@ -341,11 +341,7 @@ BIO *PKCS7_dataInit(PKCS7 *p7, BIO *bio)
     }
 
     if (bio == NULL) {
-        if (PKCS7_is_detached(p7)) {
-            // TODO [childw] need to care about BIO_s_null() ?
-            /*bio = BIO_new(BIO_s_null());*/
-            bio = NULL;
-        } else if (os && os->length > 0) {
+        if (os && os->length > 0) {
             bio = BIO_new_mem_buf(os->data, os->length);
         } else {
             bio = BIO_new(BIO_s_mem());
@@ -377,7 +373,7 @@ static BIO *PKCS7_find_digest(EVP_MD_CTX **pmd, BIO *bio, int nid)
             return NULL;
         }
         // TODO [childw] need to implement MD-type BIO?
-        /*BIO_get_md_ctx(bio, pmd);*/
+        BIO_get_md_ctx(bio, pmd);
         if (*pmd == NULL) {
             OPENSSL_PUT_ERROR(PKCS7, ERR_R_INTERNAL_ERROR);
             return NULL;
@@ -496,11 +492,10 @@ int PKCS7_dataFinal(PKCS7 *p7, BIO *bio)
 
             sk = si->auth_attr;
 
-            /* TODO [childw] address assert below, need to support >0 attrs?
-             * If there are attributes, we add the digest attribute and only
-             * sign the attributes
+            /* TODO [childw] we don't currently sign attributes like OSSL does
+             * https://github.com/openssl/openssl/blob/2f33265039cdbd0e4589c80970e02e208f3f94d2/crypto/pkcs7/pk7_doit.c#L687
              */
-            if (sk_X509_ATTRIBUTE_num(sk) == 0) {
+            if (sk_X509_ATTRIBUTE_num(sk) > 0) {
                 OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_PKCS7_DATASIGN);
                 goto err;
             }
@@ -510,7 +505,6 @@ int PKCS7_dataFinal(PKCS7 *p7, BIO *bio)
             if (abuflen == 0 || (abuf = OPENSSL_malloc(abuflen)) == NULL)
                 goto err;
 
-            // TODO [childw] need to call |EVP_Sign_init_ex| first?
             if (!EVP_SignInit_ex(ctx_tmp, ctx_tmp->digest, NULL) ||
                 !EVP_SignFinal(ctx_tmp, abuf, &abuflen, si->pkey)) {
                 OPENSSL_free(abuf);
