@@ -100,7 +100,7 @@ int pkcs7_add_signed_data(CBB *out,
                           const void *arg);
 
 
-STACK_OF(X509) *PKCS7_get0_signers(PKCS7 *p7, STACK_OF(X509) *certs, int flags);
+// STACK_OF(X509) *PKCS7_get0_signers(PKCS7 *p7, STACK_OF(X509) *certs, int flags);
 int PKCS7_is_detached(PKCS7 *p7);
 ASN1_OCTET_STRING *PKCS7_get_octet_string(PKCS7 *p7);
 int PKCS7_type_is_other(const PKCS7 *p7);
