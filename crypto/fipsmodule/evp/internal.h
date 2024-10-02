@@ -258,6 +258,10 @@ int EVP_RSA_PKEY_CTX_ctrl(EVP_PKEY_CTX *ctx, int optype, int cmd, int p1, void *
 //     2. |ctx->keygen_info[1]| -> |n|
 #define EVP_PKEY_CTX_KEYGEN_INFO_COUNT 2
 
+// EVP_PKEY_CTX_KEYGEN_INFO_COUNT is the maximum array length for
+// |EVP_PKEY_CTX->keygen_info|.
+#define EVP_PKEY_CTX_KEYGEN_INFO_COUNT 2
+
 struct evp_pkey_ctx_st {
   // Method associated with this operation
   const EVP_PKEY_METHOD *pmeth;
