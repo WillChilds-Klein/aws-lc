@@ -159,6 +159,116 @@ struct pkcs7_signed_st {
   STACK_OF(PKCS7_SIGNER_INFO) *signer_info;
 };
 
+// ASN.1 defined here https://datatracker.ietf.org/doc/html/rfc2315#section-10.2
+//
+//   RecipientInfo ::= SEQUENCE {
+//     version Version,
+//     issuerAndSerialNumber IssuerAndSerialNumber,
+//     keyEncryptionAlgorithm
+//
+//       KeyEncryptionAlgorithmIdentifier,
+//     encryptedKey EncryptedKey }
+//
+//   EncryptedKey ::= OCTET STRING
+struct pkcs7_recip_info_st {
+  ASN1_INTEGER *version;
+  PKCS7_ISSUER_AND_SERIAL *issuer_and_serial;
+  X509_ALGOR *key_enc_algor;
+  ASN1_OCTET_STRING *enc_key;
+  X509 *cert;  // NOTE: |cert| is not serialized
+};
+
+// ASN.1 defined here https://datatracker.ietf.org/doc/html/rfc2315#section-9.2
+//
+//   SignerInfo ::= SEQUENCE {
+//     version Version,
+//     issuerAndSerialNumber IssuerAndSerialNumber,
+//     digestAlgorithm DigestAlgorithmIdentifier,
+//     authenticatedAttributes
+//       [0] IMPLICIT Attributes OPTIONAL,
+//     digestEncryptionAlgorithm
+//       DigestEncryptionAlgorithmIdentifier,
+//     encryptedDigest EncryptedDigest,
+//     unauthenticatedAttributes
+//       [1] IMPLICIT Attributes OPTIONAL }
+//
+//   EncryptedDigest ::= OCTET STRING
+struct pkcs7_signer_info_st {
+  ASN1_INTEGER *version;
+  PKCS7_ISSUER_AND_SERIAL *issuer_and_serial;
+  X509_ALGOR *digest_alg;
+  STACK_OF(X509_ATTRIBUTE) *auth_attr;
+  X509_ALGOR *digest_enc_alg;
+  ASN1_OCTET_STRING *enc_digest;
+  STACK_OF(X509_ATTRIBUTE) *unauth_attr;
+  EVP_PKEY *pkey;  // NOTE: |pkey| is not seriliazed.
+};
+
+
+// ASN.1 defined here https://datatracker.ietf.org/doc/html/rfc2315#section-10.1
+//
+//    EnvelopedData ::= SEQUENCE {
+//      version Version,
+//      recipientInfos RecipientInfos,
+//      encryptedContentInfo EncryptedContentInfo }
+//
+//    RecipientInfos ::= SET OF RecipientInfo
+struct pkcs7_envelope_st {
+  ASN1_INTEGER *version;
+  PKCS7_ENC_CONTENT *enc_data;
+  STACK_OF(PKCS7_RECIP_INFO) *recipientinfo;
+};
+
+// ASN.1 defined here https://datatracker.ietf.org/doc/html/rfc2315#section-11.1
+//
+//   SignedAndEnvelopedData ::= SEQUENCE {
+//     version Version,
+//     recipientInfos RecipientInfos,
+//     digestAlgorithms DigestAlgorithmIdentifiers,
+//     encryptedContentInfo EncryptedContentInfo,
+//     certificates
+//        [0] IMPLICIT ExtendedCertificatesAndCertificates
+//          OPTIONAL,
+//     crls
+//       [1] IMPLICIT CertificateRevocationLists OPTIONAL,
+//     signerInfos SignerInfos }
+struct pkcs7_sign_envelope_st {
+  ASN1_INTEGER *version;
+  STACK_OF(PKCS7_RECIP_INFO) *recipientinfo;
+  STACK_OF(X509_ALGOR) *md_algs;
+  PKCS7_ENC_CONTENT *enc_data;
+  STACK_OF(X509) *cert;
+  STACK_OF(X509_CRL) *crl;
+  STACK_OF(PKCS7_SIGNER_INFO) *signer_info;
+};
+
+// ASN.1 defined here https://datatracker.ietf.org/doc/html/rfc2315#section-6.7
+//
+//   IssuerAndSerialNumber ::= SEQUENCE {
+//     issuer Name,
+//     serialNumber CertificateSerialNumber }
+struct pkcs7_issuer_and_serial_st {
+  X509_NAME *issuer;
+  ASN1_INTEGER *serial;
+};
+
+// ASN.1 defined here https://datatracker.ietf.org/doc/html/rfc2315#section-10.1
+//
+//   EncryptedContentInfo ::= SEQUENCE {
+//     contentType ContentType,
+//     contentEncryptionAlgorithm
+//       ContentEncryptionAlgorithmIdentifier,
+//     encryptedContent
+//       [0] IMPLICIT EncryptedContent OPTIONAL }
+//
+//   EncryptedContent ::= OCTET STRING
+struct pkcs7_enc_content_st {
+  ASN1_OBJECT *content_type;
+  X509_ALGOR *algorithm;
+  ASN1_OCTET_STRING *enc_data;
+  const EVP_CIPHER *cipher;  // NOTE: |cipher| is not serialized
+};
+
 // Only declare ASN1 functions or define stacks publibly if needed by supported
 // projects that depend on them.
 DECLARE_ASN1_FUNCTIONS(PKCS7)
@@ -281,8 +391,14 @@ OPENSSL_EXPORT int PKCS7_type_is_signedAndEnveloped(const PKCS7 *p7);
 
 
 // TODO [childw]
-OPENSSL_EXPORT BIO *PKCS7_dataInit(PKCS7 *p7, BIO *bio);
+OPENSSL_EXPORT BIO* PKCS7_dataInit(PKCS7 *p7, BIO *bio);
 OPENSSL_EXPORT int PKCS7_dataFinal(PKCS7 *p7, BIO *bio);
+OPENSSL_EXPORT PKCS7* PKCS7_encrypt(STACK_OF(X509) *certs, BIO *in, const EVP_CIPHER *cipher, int flags);
+OPENSSL_EXPORT int PKCS7_decrypt(PKCS7 *p7, EVP_PKEY *pkey, X509 *cert, BIO *data, int flags);
+OPENSSL_EXPORT int PKCS7_verify(PKCS7 *p7, STACK_OF(X509) *certs, X509_STORE *store, BIO *indata, BIO *out, int flags);
+OPENSSL_EXPORT PKCS7* SMIME_read_PKCS7(BIO *in, BIO **bcont);
+OPENSSL_EXPORT int SMIME_write_PKCS7(BIO *out, PKCS7 *p7, BIO *data, int flags);
+int PKCS7_is_detached(PKCS7 *p7);
 
 // PKCS7_sign [Deprecated]
 //

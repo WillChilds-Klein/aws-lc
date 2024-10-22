@@ -34,6 +34,7 @@ function ruby_build() {
                  --with-openssl-lib=${AWS_LC_INSTALL_FOLDER}/lib \
                  --with-openssl-include=${AWS_LC_INSTALL_FOLDER}/include
     make -j ${NUM_CPU_THREADS}
+    make test-all TESTS="../test/openssl/test_pkcs7.rb"
     popd
 }
 
