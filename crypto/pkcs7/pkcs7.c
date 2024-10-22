@@ -1003,3 +1003,13 @@ int PKCS7_type_is_other(const PKCS7 *p7) {
         return 1;
     }
 }
+
+PKCS7* PKCS7_encrypt(STACK_OF(X509) *certs, BIO *in, const EVP_CIPHER *cipher, int flags) { return 0; }
+
+int PKCS7_decrypt(PKCS7 *p7, EVP_PKEY *pkey, X509 *cert, BIO *data, int flags) {return 0;}
+
+int PKCS7_verify(PKCS7 *p7, STACK_OF(X509) *certs, X509_STORE *store, BIO *indata, BIO *out, int flags) {return 0;}
+
+PKCS7* SMIME_read_PKCS7(BIO *in, BIO **bcont) {return 0;}
+
+int SMIME_write_PKCS7(BIO *out, PKCS7 *p7, BIO *data, int flags) {return 0;}

@@ -22,8 +22,6 @@ extern "C" {
 #endif
 
 
-typedef struct pkcs7_issuer_and_serial_st PKCS7_ISSUER_AND_SERIAL;
-typedef struct pkcs7_enc_content_st PKCS7_ENC_CONTENT;
 
 DECLARE_ASN1_FUNCTIONS(PKCS7_ISSUER_AND_SERIAL)
 DECLARE_ASN1_FUNCTIONS(PKCS7_SIGNED)
@@ -35,114 +33,6 @@ DECLARE_ASN1_FUNCTIONS(PKCS7_SIGN_ENVELOPE)
 
 DEFINE_STACK_OF(PKCS7)
 
-// ASN.1 defined here https://datatracker.ietf.org/doc/html/rfc2315#section-11.1
-//
-//   SignedAndEnvelopedData ::= SEQUENCE {
-//     version Version,
-//     recipientInfos RecipientInfos,
-//     digestAlgorithms DigestAlgorithmIdentifiers,
-//     encryptedContentInfo EncryptedContentInfo,
-//     certificates
-//        [0] IMPLICIT ExtendedCertificatesAndCertificates
-//          OPTIONAL,
-//     crls
-//       [1] IMPLICIT CertificateRevocationLists OPTIONAL,
-//     signerInfos SignerInfos }
-struct pkcs7_sign_envelope_st {
-  ASN1_INTEGER *version;
-  STACK_OF(PKCS7_RECIP_INFO) *recipientinfo;
-  STACK_OF(X509_ALGOR) *md_algs;
-  PKCS7_ENC_CONTENT *enc_data;
-  STACK_OF(X509) *cert;
-  STACK_OF(X509_CRL) *crl;
-  STACK_OF(PKCS7_SIGNER_INFO) *signer_info;
-};
-
-// ASN.1 defined here https://datatracker.ietf.org/doc/html/rfc2315#section-6.7
-//
-//   IssuerAndSerialNumber ::= SEQUENCE {
-//     issuer Name,
-//     serialNumber CertificateSerialNumber }
-struct pkcs7_issuer_and_serial_st {
-  X509_NAME *issuer;
-  ASN1_INTEGER *serial;
-};
-
-// ASN.1 defined here https://datatracker.ietf.org/doc/html/rfc2315#section-9.2
-//
-//   SignerInfo ::= SEQUENCE {
-//     version Version,
-//     issuerAndSerialNumber IssuerAndSerialNumber,
-//     digestAlgorithm DigestAlgorithmIdentifier,
-//     authenticatedAttributes
-//       [0] IMPLICIT Attributes OPTIONAL,
-//     digestEncryptionAlgorithm
-//       DigestEncryptionAlgorithmIdentifier,
-//     encryptedDigest EncryptedDigest,
-//     unauthenticatedAttributes
-//       [1] IMPLICIT Attributes OPTIONAL }
-//
-//   EncryptedDigest ::= OCTET STRING
-struct pkcs7_signer_info_st {
-  ASN1_INTEGER *version;
-  PKCS7_ISSUER_AND_SERIAL *issuer_and_serial;
-  X509_ALGOR *digest_alg;
-  STACK_OF(X509_ATTRIBUTE) *auth_attr;
-  X509_ALGOR *digest_enc_alg;
-  ASN1_OCTET_STRING *enc_digest;
-  STACK_OF(X509_ATTRIBUTE) *unauth_attr;
-  EVP_PKEY *pkey;  // NOTE: |pkey| is not seriliazed.
-};
-
-// ASN.1 defined here https://datatracker.ietf.org/doc/html/rfc2315#section-10.2
-//
-//   RecipientInfo ::= SEQUENCE {
-//     version Version,
-//     issuerAndSerialNumber IssuerAndSerialNumber,
-//     keyEncryptionAlgorithm
-//
-//       KeyEncryptionAlgorithmIdentifier,
-//     encryptedKey EncryptedKey }
-//
-//   EncryptedKey ::= OCTET STRING
-struct pkcs7_recip_info_st {
-  ASN1_INTEGER *version;
-  PKCS7_ISSUER_AND_SERIAL *issuer_and_serial;
-  X509_ALGOR *key_enc_algor;
-  ASN1_OCTET_STRING *enc_key;
-  X509 *cert;  // NOTE: |cert| is not serialized
-};
-
-// ASN.1 defined here https://datatracker.ietf.org/doc/html/rfc2315#section-10.1
-//
-//   EncryptedContentInfo ::= SEQUENCE {
-//     contentType ContentType,
-//     contentEncryptionAlgorithm
-//       ContentEncryptionAlgorithmIdentifier,
-//     encryptedContent
-//       [0] IMPLICIT EncryptedContent OPTIONAL }
-//
-//   EncryptedContent ::= OCTET STRING
-struct pkcs7_enc_content_st {
-  ASN1_OBJECT *content_type;
-  X509_ALGOR *algorithm;
-  ASN1_OCTET_STRING *enc_data;
-  const EVP_CIPHER *cipher;  // NOTE: |cipher| is not serialized
-};
-
-// ASN.1 defined here https://datatracker.ietf.org/doc/html/rfc2315#section-10.1
-//
-//    EnvelopedData ::= SEQUENCE {
-//      version Version,
-//      recipientInfos RecipientInfos,
-//      encryptedContentInfo EncryptedContentInfo }
-//
-//    RecipientInfos ::= SET OF RecipientInfo
-struct pkcs7_envelope_st {
-  ASN1_INTEGER *version;
-  PKCS7_ENC_CONTENT *enc_data;
-  STACK_OF(PKCS7_RECIP_INFO) *recipientinfo;
-};
 
 // ASN.1 defined here https://datatracker.ietf.org/doc/html/rfc2315#section-12
 //
@@ -222,7 +112,6 @@ OPENSSL_EXPORT int BIO_set_cipher(BIO *b, const EVP_CIPHER *cipher,
 
 
 // STACK_OF(X509) *PKCS7_get0_signers(PKCS7 *p7, STACK_OF(X509) *certs, int flags);
-int PKCS7_is_detached(PKCS7 *p7);
 ASN1_OCTET_STRING *PKCS7_get_octet_string(PKCS7 *p7);
 int PKCS7_type_is_other(const PKCS7 *p7);
 
