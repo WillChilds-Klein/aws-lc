@@ -1004,9 +1004,111 @@ int PKCS7_type_is_other(const PKCS7 *p7) {
     }
 }
 
-PKCS7* PKCS7_encrypt(STACK_OF(X509) *certs, BIO *in, const EVP_CIPHER *cipher, int flags) { return 0; }
+PKCS7* PKCS7_encrypt(STACK_OF(X509) *certs, BIO *in, const EVP_CIPHER *cipher, int flags) {
+    PKCS7 *p7;
+    BIO *p7bio = NULL;
+    int i;
+    X509 *x509;
 
-int PKCS7_decrypt(PKCS7 *p7, EVP_PKEY *pkey, X509 *cert, BIO *data, int flags) {return 0;}
+    if (!PKCS7_set_type(p7, NID_pkcs7_enveloped))
+        goto err;
+    if (!PKCS7_set_cipher(p7, cipher)) {
+        OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_ERROR_SETTING_CIPHER);
+        goto err;
+    }
+
+    for (i = 0; i < sk_X509_num(certs); i++) {
+        x509 = sk_X509_value(certs, i);
+        if (!PKCS7_add_recipient(p7, x509)) {
+            OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_ERROR_ADDING_RECIPIENT);
+            goto err;
+        }
+    }
+
+    if (flags & PKCS7_STREAM)
+        return p7;
+
+    if (PKCS7_final(p7, in, flags))
+        return p7;
+
+ err:
+
+    BIO_free_all(p7bio);
+    PKCS7_free(p7);
+    return NULL;
+}
+
+int PKCS7_decrypt(PKCS7 *p7, EVP_PKEY *pkey, X509 *cert, BIO *data, int flags) {
+    BIO *tmpmem;
+    int ret = 0, i;
+    char *buf = NULL;
+
+    if (p7 == NULL) {
+      OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_INVALID_NULL_POINTER);
+      return 0;
+    }
+
+    if (!PKCS7_type_is_enveloped(p7)
+        && !PKCS7_type_is_signedAndEnveloped(p7)) {
+      OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_WRONG_CONTENT_TYPE);
+      return 0;
+        }
+
+    if (cert && !X509_check_private_key(cert, pkey)) {
+      OPENSSL_PUT_ERROR(PKCS7,
+                PKCS7_R_PRIVATE_KEY_DOES_NOT_MATCH_CERTIFICATE);
+      return 0;
+    }
+
+    if ((tmpmem = PKCS7_dataDecode(p7, pkey, NULL, cert)) == NULL) {
+      OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_DECRYPT_ERROR);
+      return 0;
+    }
+
+    //if (flags & PKCS7_TEXT) {
+    //  BIO *tmpbuf, *bread;
+    //  /* Encrypt BIOs can't do BIO_gets() so add a buffer BIO */
+    //  if ((tmpbuf = BIO_new(BIO_f_buffer())) == NULL) {
+    //    OPENSSL_PUT_ERROR(PKCS7, ERR_R_BIO_LIB);
+    //    BIO_free_all(tmpmem);
+    //    return 0;
+    //  }
+    //  if ((bread = BIO_push(tmpbuf, tmpmem)) == NULL) {
+    //    OPENSSL_PUT_ERROR(PKCS7, ERR_R_BIO_LIB);
+    //    BIO_free_all(tmpbuf);
+    //    BIO_free_all(tmpmem);
+    //    return 0;
+    //  }
+    //  ret = SMIME_text(bread, data);
+    //  if (ret > 0 && BIO_method_type(tmpmem) == BIO_TYPE_CIPHER) {
+    //    if (BIO_get_cipher_status(tmpmem) <= 0)
+    //      ret = 0;
+    //  }
+    //  BIO_free_all(bread);
+    //  return ret;
+    //}
+    if ((buf = OPENSSL_malloc(BUFFERSIZE)) == NULL)
+      goto err;
+    for (;;) {
+      i = BIO_read(tmpmem, buf, BUFFERSIZE);
+      if (i <= 0) {
+        ret = 1;
+        if (BIO_method_type(tmpmem) == BIO_TYPE_CIPHER) {
+          if (BIO_get_cipher_status(tmpmem) <= 0)
+            ret = 0;
+        }
+
+        break;
+      }
+      if (BIO_write(data, buf, i) != i) {
+        break;
+      }
+    }
+    err:
+        OPENSSL_free(buf);
+    BIO_free_all(tmpmem);
+    return ret;
+}
 
 int PKCS7_verify(PKCS7 *p7, STACK_OF(X509) *certs, X509_STORE *store, BIO *indata, BIO *out, int flags) {return 0;}
 
