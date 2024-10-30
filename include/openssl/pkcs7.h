@@ -403,9 +403,6 @@ OPENSSL_EXPORT PKCS7_RECIP_INFO *PKCS7_add_recipient(PKCS7 *p7, X509 *x509);
 OPENSSL_EXPORT int PKCS7_final(PKCS7 *p7, BIO *data, int flags);
 OPENSSL_EXPORT BIO *PKCS7_dataDecode(PKCS7 *p7, EVP_PKEY *pkey, BIO *in_bio, X509 *pcert);
 
-#define BIO_get_cipher_status(bio) \
-  BIO_ctrl(bio, BIO_C_GET_CIPHER_STATUS, 0, NULL)
-
 // PKCS7_sign [Deprecated]
 //
 // Only |PKCS7_DETACHED| and a combination of

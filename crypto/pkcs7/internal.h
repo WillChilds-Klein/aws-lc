@@ -118,8 +118,8 @@ int PKCS7_type_is_other(const PKCS7 *p7);
 #define BIO_get_cipher_ctx(bio, contents) BIO_ctrl(bio, BIO_C_GET_CIPHER_CTX, 0, \
                                                 (char *)(contents))
 
-#define BIO_get_cipher_status(bio, contents) BIO_ctrl(bio, BIO_C_GET_CIPHER_STATUS, 0, \
-                                                (char *)(contents))
+#define BIO_get_cipher_status(bio) \
+  BIO_ctrl(bio, BIO_C_GET_CIPHER_STATUS, 0, NULL)
 
 
 #if defined(__cplusplus)
