@@ -233,12 +233,22 @@ int PKCS7_bundle_CRLs(CBB *out, const STACK_OF(X509_CRL) *crls) {
 }
 
 PKCS7 *d2i_PKCS7_bio(BIO *bio, PKCS7 **out) {
-  if (out == NULL) {
+  if (bio == NULL) {
     OPENSSL_PUT_ERROR(PKCS7, ERR_R_PASSED_NULL_PARAMETER);
     return NULL;
   }
 
-  return ASN1_item_d2i_bio(ASN1_ITEM_rptr(PKCS7), bio, *out);
+  uint8_t *data;
+  size_t len;
+  // Historically, this function did not impose a limit in OpenSSL and is used
+  // to read CRLs, so we leave this without an external bound.
+  if (!BIO_read_asn1(bio, &data, &len, INT_MAX)) {
+    return NULL;
+  }
+  const uint8_t *ptr = data;
+  void *ret = d2i_PKCS7(out, &ptr, len);
+  OPENSSL_free(data);
+  return ret;
 }
 
 int i2d_PKCS7_bio(BIO *bio, const PKCS7 *p7) {
@@ -386,10 +396,10 @@ PKCS7 *PKCS7_sign(X509 *sign_cert, EVP_PKEY *pkey, STACK_OF(X509) *certs,
     if (!PKCS7_bundle_certificates(&cbb, certs)) {
       goto out;
     }
-  } else if (sign_cert != NULL && pkey != NULL && certs == NULL &&
+  } else if (sign_cert != NULL && pkey != NULL /*&& certs == NULL*/ &&
              data != NULL &&
-             flags == (PKCS7_NOATTR | PKCS7_BINARY | PKCS7_NOCERTS |
-                       PKCS7_DETACHED) &&
+             // flags == (PKCS7_NOATTR | PKCS7_BINARY | PKCS7_NOCERTS |
+                       // PKCS7_DETACHED) &&
              EVP_PKEY_id(pkey) == NID_rsaEncryption) {
     // sign-file.c from the Linux kernel.
     const size_t signature_max_len = EVP_PKEY_size(pkey);
@@ -408,6 +418,11 @@ PKCS7 *PKCS7_sign(X509 *sign_cert, EVP_PKEY *pkey, STACK_OF(X509) *certs,
     }
     OPENSSL_free(si_data.signature);
   } else {
+    printf("FOOBAR %p %p %p %p %d\n", sign_cert, pkey, certs, data, EVP_PKEY_id(pkey));
+    printf("FLAGS %d %d %d %d\n",
+      flags & PKCS7_NOATTR, flags & PKCS7_BINARY,
+           flags & PKCS7_NOCERTS, flags & PKCS7_DETACHED
+    );
     OPENSSL_PUT_ERROR(PKCS7, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
     goto out;
   }
@@ -462,7 +477,6 @@ int PKCS7_add_certificate(PKCS7 *p7, X509 *x509) {
 
 int PKCS7_add_crl(PKCS7 *p7, X509_CRL *crl) {
   STACK_OF(X509_CRL) **sk;
-
   if (p7 == NULL || crl == NULL) {
     OPENSSL_PUT_ERROR(PKCS7, ERR_R_PASSED_NULL_PARAMETER);
     return 0;
