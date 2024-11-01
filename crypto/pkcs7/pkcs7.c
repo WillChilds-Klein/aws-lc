@@ -25,6 +25,7 @@
 #include <openssl/x509.h>
 
 #include "../bytestring/internal.h"
+#include "../fipsmodule/digest/internal.h"
 #include "../internal.h"
 #include "internal.h"
 
@@ -471,7 +472,14 @@ int PKCS7_set_digest(PKCS7 *p7, const EVP_MD *md) {
         OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_UNKNOWN_DIGEST_TYPE);
         return 0;
       }
+      OPENSSL_free(p7->d.digest->digest_alg->parameter);
+      if ((p7->d.digest->digest_alg->parameter = ASN1_TYPE_new()) == NULL) {
+        OPENSSL_PUT_ERROR(PKCS7, ERR_R_ASN1_LIB);
+        return 0;
+      }
       p7->d.digest->md = md;
+      p7->d.digest->digest_alg->parameter->type = V_ASN1_NULL;
+      p7->d.digest->digest_alg->algorithm = OBJ_nid2obj(EVP_MD_nid(md));
       return 1;
     default:
       OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_WRONG_CONTENT_TYPE);
@@ -679,11 +687,45 @@ err:
   return ret;
 }
 
+static int pkcs7_bio_add_digest(BIO **pbio, X509_ALGOR *alg) {
+  BIO *btmp;
+
+  const EVP_MD *md = EVP_get_digestbynid(OBJ_obj2nid(alg->algorithm));
+  if (md == NULL) {
+    OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_UNKNOWN_DIGEST_TYPE);
+    goto err;
+  }
+
+  if ((btmp = BIO_new(BIO_f_md())) == NULL) {
+    OPENSSL_PUT_ERROR(PKCS7, ERR_R_BIO_LIB);
+    goto err;
+  }
+
+  if (BIO_set_md(btmp, (EVP_MD*) md) <= 0) {
+    OPENSSL_PUT_ERROR(PKCS7, ERR_R_BIO_LIB);
+    goto err;
+  }
+  if (*pbio == NULL) {
+    *pbio = btmp;
+  } else if (!BIO_push(*pbio, btmp)) {
+    OPENSSL_PUT_ERROR(PKCS7, ERR_R_BIO_LIB);
+    goto err;
+  }
+  btmp = NULL;
+
+  return 1;
+
+err:
+     BIO_free(btmp);
+  return 0;
+}
+
 BIO *PKCS7_dataInit(PKCS7 *p7, BIO *bio) {
   int i;
   BIO *out = NULL, *btmp = NULL;
   const EVP_CIPHER *evp_cipher = NULL;
   STACK_OF(PKCS7_RECIP_INFO) *rsk = NULL;
+  STACK_OF(X509_ALGOR) *md_sk = NULL;
   X509_ALGOR *xalg = NULL;
   PKCS7_RECIP_INFO *ri = NULL;
   ASN1_OCTET_STRING *os = NULL;
@@ -712,34 +754,46 @@ BIO *PKCS7_dataInit(PKCS7 *p7, BIO *bio) {
 
   switch (i) {
     case NID_pkcs7_signed:
-      os = PKCS7_get_octet_string(p7->d.sign->contents);
-      break;
+      md_sk = p7->d.sign->md_algs;
+    os = PKCS7_get_octet_string(p7->d.sign->contents);
+    break;
     case NID_pkcs7_signedAndEnveloped:
-      rsk = p7->d.signed_and_enveloped->recipientinfo;
-      xalg = p7->d.signed_and_enveloped->enc_data->algorithm;
-      evp_cipher = p7->d.signed_and_enveloped->enc_data->cipher;
-      if (evp_cipher == NULL) {
-        OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_CIPHER_NOT_INITIALIZED);
-        goto err;
-      }
-      break;
+      md_sk = p7->d.signed_and_enveloped->md_algs;
+    rsk = p7->d.signed_and_enveloped->recipientinfo;
+    xalg = p7->d.signed_and_enveloped->enc_data->algorithm;
+    evp_cipher = p7->d.signed_and_enveloped->enc_data->cipher;
+    if (evp_cipher == NULL) {
+      OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_CIPHER_NOT_INITIALIZED);
+      goto err;
+    }
+    break;
     case NID_pkcs7_enveloped:
       rsk = p7->d.enveloped->recipientinfo;
-      xalg = p7->d.enveloped->enc_data->algorithm;
-      evp_cipher = p7->d.enveloped->enc_data->cipher;
-      if (evp_cipher == NULL) {
-        OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_CIPHER_NOT_INITIALIZED);
-        goto err;
-      }
-      break;
+    xalg = p7->d.enveloped->enc_data->algorithm;
+    evp_cipher = p7->d.enveloped->enc_data->cipher;
+    if (evp_cipher == NULL) {
+      OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_CIPHER_NOT_INITIALIZED);
+      goto err;
+    }
+    break;
     case NID_pkcs7_digest:
       os = PKCS7_get_octet_string(p7->d.digest->contents);
-      break;
+      if (!pkcs7_bio_add_digest(&out, p7->d.digest->digest_alg)) {
+        goto err;
+      }
+    break;
     case NID_pkcs7_data:
       break;
     default:
       OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_UNSUPPORTED_CONTENT_TYPE);
+    goto err;
+  }
+
+
+  for (i = 0; i < (int) sk_X509_ALGOR_num(md_sk); i++) {
+    if (!pkcs7_bio_add_digest(&out, sk_X509_ALGOR_value(md_sk, i))) {
       goto err;
+    }
   }
 
   if (evp_cipher != NULL) {
