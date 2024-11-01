@@ -1588,6 +1588,12 @@ TEST(PKCS7Test, BIO) {
     EXPECT_TRUE(PKCS7_dataFinal(p7.get(), bio.get()));
 
     // parse a cert for use with recipient infos
+    bssl::UniquePtr<RSA> rsa(RSA_new());
+    ASSERT_TRUE(rsa);
+    ASSERT_TRUE(RSA_generate_key_fips(rsa.get(), 2048, nullptr));
+    bssl::UniquePtr<EVP_PKEY> rsa_pkey(EVP_PKEY_new());
+    ASSERT_TRUE(rsa_pkey);
+    ASSERT_TRUE(EVP_PKEY_set1_RSA(rsa_pkey.get(), rsa.get()));
     certs.reset(sk_X509_new_null());
     bio.reset(BIO_new_mem_buf(kPEMCert, strlen(kPEMCert)));
     ASSERT_TRUE(bio);
@@ -1596,6 +1602,7 @@ TEST(PKCS7Test, BIO) {
     ASSERT_TRUE(PKCS7_get_PEM_certificates(certs.get(), bio.get()));
     ASSERT_EQ(1U, sk_X509_num(certs.get()));
     rsa_x509.reset(sk_X509_pop(certs.get()));
+    ASSERT_TRUE(X509_set_pubkey(rsa_x509.get(), rsa_pkey.get()));
 
     p7_der = kEnvelopedData;
     p7_der_len = sizeof(kEnvelopedData);
@@ -1610,19 +1617,17 @@ TEST(PKCS7Test, BIO) {
     PKCS7_RECIP_INFO *p7ri = sk_PKCS7_RECIP_INFO_value(p7ri_sk, 0);
     ASSERT_TRUE(p7ri);
     EXPECT_TRUE(PKCS7_RECIP_INFO_set(p7ri, rsa_x509.get()));
-    // how to add cert to p7?
-    //bio.reset(PKCS7_dataInit(p7.get(), NULL));
-    //EXPECT_TRUE(bio);
+    bio.reset(PKCS7_dataInit(p7.get(), NULL));
+    EXPECT_TRUE(bio);
     EXPECT_TRUE(PKCS7_dataFinal(p7.get(), bio.get()));
 
-    /*
+    bio.reset(nullptr);
     p7.reset(PKCS7_new());
     ASSERT_TRUE(p7);
     ASSERT_TRUE(PKCS7_set_type(p7.get(), NID_pkcs7_signedAndEnveloped));
     ASSERT_TRUE(PKCS7_set_cipher(p7.get(), EVP_aes_128_ctr()));
     bio.reset(PKCS7_dataInit(p7.get(), NULL));
     EXPECT_TRUE(bio);
-    // TODO [childw]
     EXPECT_TRUE(PKCS7_dataFinal(p7.get(), bio.get()));
 
     p7.reset(PKCS7_new());
@@ -1631,8 +1636,6 @@ TEST(PKCS7Test, BIO) {
     ASSERT_TRUE(PKCS7_set_digest(p7.get(), EVP_sha256()));
     bio.reset(PKCS7_dataInit(p7.get(), NULL));
     EXPECT_TRUE(bio);
-    // TODO [childw]
-    //EXPECT_TRUE(PKCS7_dataFinal(p7.get(), bio.get()));
     EXPECT_FALSE(PKCS7_dataFinal(p7.get(), bio.get()));
 
     p7.reset(PKCS7_new());
@@ -1645,10 +1648,10 @@ TEST(PKCS7Test, BIO) {
     p7.reset(PKCS7_new());
     ASSERT_TRUE(p7);
     ASSERT_TRUE(PKCS7_set_type(p7.get(), NID_pkcs7_enveloped));
+    ASSERT_TRUE(PKCS7_set_cipher(p7.get(), EVP_aes_128_ctr()));
     bio.reset(PKCS7_dataInit(p7.get(), NULL));
-    //EXPECT_TRUE(bio);
+    EXPECT_TRUE(bio);
     EXPECT_TRUE(PKCS7_dataFinal(p7.get(), bio.get()));
-    */
 
     // NID_pkcs7_encrypted not supported, not needed by ruby
     p7.reset(PKCS7_new());

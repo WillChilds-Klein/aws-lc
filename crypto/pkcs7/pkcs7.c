@@ -752,7 +752,10 @@ BIO *PKCS7_dataInit(PKCS7 *p7, BIO *bio) {
       OPENSSL_PUT_ERROR(PKCS7, ERR_R_BIO_LIB);
       goto err;
     }
-    BIO_get_cipher_ctx(btmp, &ctx);
+    if (!BIO_get_cipher_ctx(btmp, &ctx)) {
+      OPENSSL_PUT_ERROR(PKCS7, ERR_R_BIO_LIB);
+      goto err;
+    }
     keylen = EVP_CIPHER_key_length(evp_cipher);
     ivlen = EVP_CIPHER_iv_length(evp_cipher);
     xalg->algorithm = OBJ_nid2obj(EVP_CIPHER_nid(evp_cipher));
