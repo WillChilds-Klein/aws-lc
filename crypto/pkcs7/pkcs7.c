@@ -821,6 +821,30 @@ BIO *PKCS7_dataInit(PKCS7 *p7, BIO *bio) {
     if (EVP_CipherInit_ex(ctx, evp_cipher, NULL, key, iv, 1) <= 0)
       goto err;
 
+    if (ivlen > 0) {
+      if (xalg->parameter == NULL) {
+        xalg->parameter = ASN1_TYPE_new();
+        if (xalg->parameter == NULL) {
+          goto err;
+        }
+        xalg->parameter->type = V_ASN1_OCTET_STRING;
+        xalg->parameter->value.octet_string = ASN1_OCTET_STRING_new();
+      // CBB iv_cbb;
+      // if (!CBB_init_fixed(&iv_cbb, xalg->parameter->value.octet_string->data, ivlen) ||
+      //     !CBB_add_asn1_octet_string(&iv_cbb, iv, ivlen) ||
+      //     !CBB_flush(&iv_cbb)) {
+      //   goto err;
+      // }
+        if (!ASN1_OCTET_STRING_set(xalg->parameter->value.octet_string, iv, ivlen)) {
+          goto err;
+        }
+      }
+      // TODO [childw]
+      // if (EVP_CIPHER_param_to_asn1(ctx, xalg->parameter) <= 0) {
+        // goto err;
+      // }
+    }
+
     /* Lets do the pub key stuff :-) */
     for (size_t ii = 0; ii < sk_PKCS7_RECIP_INFO_num(rsk); ii++) {
       ri = sk_PKCS7_RECIP_INFO_value(rsk, ii);
@@ -1015,9 +1039,31 @@ int PKCS7_dataFinal(PKCS7 *p7, BIO *bio) {
       goto err;
   }
 
-  if (!PKCS7_is_detached(p7) && os == NULL) {
-    goto err;
+  if (!PKCS7_is_detached(p7)) {
+    /*
+     * NOTE(emilia): I think we only reach os == NULL here because detached
+     * digested data support is broken.
+     */
+    if (os == NULL) {
+      goto err;
+    }
+    char *cont;
+    long contlen;
+    btmp = BIO_find_type(bio, BIO_TYPE_MEM);
+    if (btmp == NULL) {
+      OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_UNABLE_TO_FIND_MEM_BIO);
+      goto err;
+    }
+    contlen = BIO_get_mem_data(btmp, &cont);
+    /*
+     * Mark the BIO read only then we can use its copy of the data
+     * instead of making an extra copy.
+     */
+    BIO_set_flags(btmp, BIO_FLAGS_MEM_RDONLY);
+    BIO_set_mem_eof_return(btmp, 0);
+    ASN1_STRING_set0(os, (unsigned char *)cont, contlen);
   }
+
   ret = 1;
 err:
   EVP_MD_CTX_free(ctx_tmp);
@@ -1199,7 +1245,7 @@ int PKCS7_final(PKCS7 *p7, BIO *data, int flags) {
       break;
     }
   }
-  if (ret <= 0) {
+  if (ret < 0) {
     goto err;
   }
 
@@ -1443,9 +1489,27 @@ BIO *PKCS7_dataDecode(PKCS7 *p7, EVP_PKEY *pkey, BIO *in_bio, X509 *pcert) {
     BIO_get_cipher_ctx(etmp, &evp_ctx);
     if (EVP_CipherInit_ex(evp_ctx, cipher, NULL, NULL, NULL, 0) <= 0)
       goto err;
-    // TODO [childw] -- do we need this?
-    // if (EVP_CIPHER_asn1_to_param(evp_ctx, enc_alg->parameter) <= 0)
-    // goto err;
+    uint8_t iv[EVP_MAX_IV_LENGTH];
+    // CBS iv_cbs, iv_out;
+    // int iv_present;
+    // TODO [childw] all we need to do here is extract the fscking IV.
+    // TODO [childw] assert that enc_alg->parameter->value.octet_string->length == EVP_CIPHER_CTX_iv_length(evp_ctx) ?
+    // CBS_init(&iv_cbs, enc_alg->parameter->value.octet_string->data, enc_alg->parameter->value.octet_string->length);
+    // if (!CBS_get_optional_asn1_octet_string(&iv_cbs, &iv_out, &iv_present, /*tag*/0) ||
+        // !iv_present) {
+      // goto err;
+    // }
+    OPENSSL_memcpy(iv, enc_alg->parameter->value.octet_string->data, enc_alg->parameter->value.octet_string->length);
+    if (enc_alg->parameter->value.octet_string->length != (int) EVP_CIPHER_CTX_iv_length(evp_ctx)) {
+      OPENSSL_PUT_ERROR(PKCS7, ERR_R_PKCS7_LIB);
+      goto err;
+    }
+    // if (!i2d_ASN1_OCTET_STRING(enc_alg->parameter->value.octet_string., (uint8_t**) &iv)) {
+      // goto err;
+    // }
+    if (EVP_CipherInit_ex(evp_ctx, NULL, NULL, NULL, iv, 0) <= 0) {
+      goto err;
+    }
     /* Generate random key as MMA defence */
     len = EVP_CIPHER_CTX_key_length(evp_ctx);
     if (len <= 0)
@@ -1870,15 +1934,15 @@ int PKCS7_verify(PKCS7 *p7, STACK_OF(X509) *certs, X509_STORE *store,
             BIO_write(tmpout, buf, i);
     }
 
-    if (flags & PKCS7_TEXT) {
-      // TODO [childw] determine whether to support here, likely not.
-        // if (!SMIME_text(tmpout, out)) {
-        //     OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_SMIME_TEXT_ERROR);
-        //     BIO_free(tmpout);
-        //     goto err;
-        // }
-        // BIO_free(tmpout);
-    }
+    // TODO [childw] determine whether to support here, likely not.
+    // if (flags & PKCS7_TEXT) {
+    //     if (!SMIME_text(tmpout, out)) {
+    //         OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_SMIME_TEXT_ERROR);
+    //         BIO_free(tmpout);
+    //         goto err;
+    //     }
+    //     BIO_free(tmpout);
+    // }
 
     /* Now Verify All Signatures */
     if (!(flags & PKCS7_NOSIGS))

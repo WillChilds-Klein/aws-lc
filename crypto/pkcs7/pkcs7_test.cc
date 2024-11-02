@@ -1666,7 +1666,7 @@ TEST(PKCS7Test, BIO) {
     EXPECT_FALSE(PKCS7_dataFinal(p7.get(), bio.get()));
 }
 
-TEST(PKCAS7Test, RubyRepro) {
+TEST(PKCS7Test, RubyRepro) {
   const uint8_t kRubyTestEnveloped[] = {
     0x30, 0x82, 0x03, 0x6B, 0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01,
     0x07, 0x03, 0xA0, 0x82, 0x03, 0x5C, 0x30, 0x82, 0x03, 0x58, 0x02, 0x01, 0x00,
@@ -1749,4 +1749,44 @@ TEST(PKCAS7Test, RubyRepro) {
   // ASSERT_TRUE(BIO_flush(bio));
   EXPECT_EQ(sizeof(kRubySerialized), BIO_pending(bio));
   ASSERT_TRUE(d2i_PKCS7_bio(bio, nullptr));
+}
+
+
+TEST(PKCS7Test, TestEnveloped) {
+  bssl::UniquePtr<PKCS7> p7;
+  bssl::UniquePtr<BIO> bio;
+  bssl::UniquePtr<STACK_OF(X509)> certs;
+  bssl::UniquePtr<X509> rsa_x509;
+  uint8_t buf[64], decrypted[sizeof(buf)];
+
+  OPENSSL_memset(buf, 'A', sizeof(buf));
+
+  // parse a cert for use with recipient infos
+  bssl::UniquePtr<RSA> rsa(RSA_new());
+  ASSERT_TRUE(rsa);
+  ASSERT_TRUE(RSA_generate_key_fips(rsa.get(), 2048, nullptr));
+  bssl::UniquePtr<EVP_PKEY> rsa_pkey(EVP_PKEY_new());
+  ASSERT_TRUE(rsa_pkey);
+  ASSERT_TRUE(EVP_PKEY_set1_RSA(rsa_pkey.get(), rsa.get()));
+  certs.reset(sk_X509_new_null());
+  bio.reset(BIO_new_mem_buf(kPEMCert, strlen(kPEMCert)));
+  ASSERT_TRUE(bio);
+  certs.reset(sk_X509_new_null());
+  ASSERT_TRUE(certs);
+  ASSERT_TRUE(PKCS7_get_PEM_certificates(certs.get(), bio.get()));
+  ASSERT_EQ(1U, sk_X509_num(certs.get()));
+  rsa_x509.reset(sk_X509_value(certs.get(), 0));
+  ASSERT_TRUE(X509_set_pubkey(rsa_x509.get(), rsa_pkey.get()));
+
+  bio.reset(BIO_new_mem_buf(buf, sizeof(buf)));
+  p7.reset(PKCS7_encrypt(certs.get(), bio.get(), EVP_aes_128_cbc(), /*flags*/0));
+  certs.release();  // |p7| takes ownership
+  EXPECT_TRUE(p7);
+  EXPECT_TRUE(PKCS7_type_is_enveloped(p7.get()));
+  bio.reset(BIO_new(BIO_s_mem()));
+  EXPECT_TRUE(PKCS7_decrypt(p7.get(), rsa_pkey.get(), rsa_x509.get(), bio.get(), /*flags*/0));
+  EXPECT_EQ(sizeof(decrypted), BIO_pending(bio.get()));
+  OPENSSL_cleanse(decrypted, sizeof(decrypted));
+  ASSERT_EQ((int)sizeof(decrypted), BIO_read(bio.get(), decrypted, sizeof(decrypted)));
+  EXPECT_EQ(Bytes(buf, sizeof(buf)), Bytes(decrypted, sizeof(decrypted)));
 }
