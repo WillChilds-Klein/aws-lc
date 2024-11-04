@@ -1797,7 +1797,8 @@ TEST(PKCS7Test, TestSigned) {
   bssl::UniquePtr<BIO> bio_in, bio_out;
   bssl::UniquePtr<STACK_OF(X509)> certs;
   bssl::UniquePtr<X509_STORE> store;
-  // bssl::UniquePtr<X509> rsa_x509;
+  bssl::UniquePtr<X509_STORE_CTX> store_ctx;
+  bssl::UniquePtr<ASN1_TIME> not_before, not_after;
   uint8_t buf[64];
 
   OPENSSL_memset(buf, 'A', sizeof(buf));
@@ -1808,59 +1809,44 @@ TEST(PKCS7Test, TestSigned) {
   bssl::UniquePtr<EVP_PKEY> rsa_pkey(EVP_PKEY_new());
   ASSERT_TRUE(rsa_pkey);
   ASSERT_TRUE(EVP_PKEY_set1_RSA(rsa_pkey.get(), rsa.get()));
-  // certs.reset(sk_X509_new_null());
-  // bio_in.reset(BIO_new_mem_buf(kPEMCert, strlen(kPEMCert)));
-  // ASSERT_TRUE(bio_in);
-  // certs.reset(sk_X509_new_null());
-  // ASSERT_TRUE(certs);
-  // ASSERT_TRUE(PKCS7_get_PEM_certificates(certs.get(), bio_in.get()));
-  // ASSERT_EQ(1U, sk_X509_num(certs.get()));
-  // rsa_x509.reset(sk_X509_value(certs.get(), 0));
-  // ASSERT_TRUE(X509_set_pubkey(rsa_x509.get(), rsa_pkey.get()));
 
-  // p7si.reset(PKCS7_SIGNER_INFO_new());
-  // ASSERT_TRUE(p7si);
-  // EXPECT_TRUE(PKCS7_SIGNER_INFO_set(p7si.get(), rsa_x509.get(), rsa_pkey.get(),
-                                    // EVP_sha256()));
+  not_before.reset(ASN1_TIME_set_posix(nullptr, 0L));
+  not_after.reset(ASN1_TIME_set_posix(nullptr, INT_MAX));
 
   bssl::UniquePtr<X509> root =
     MakeTestCert("Root", "Root", rsa_pkey.get(), /*is_ca=*/true);
   ASSERT_TRUE(root);
-  // ASSERT_TRUE(X509_add1_ext_i2d(root.get(), NID_name_constraints, nc.get(),
-                                // /*crit=*/1, /*flags=*/0));
+  ASSERT_TRUE(X509_set_notBefore(root.get(), not_before.get()));
+  ASSERT_TRUE(X509_set_notAfter(root.get(), not_after.get()));
   ASSERT_TRUE(X509_sign(root.get(), rsa_pkey.get(), EVP_sha256()));
 
   bssl::UniquePtr<X509> leaf =
       MakeTestCert("Root", "Leaf", rsa_pkey.get(), /*is_ca=*/false);
   ASSERT_TRUE(leaf);
-  // ASSERT_TRUE(X509_add1_ext_i2d(leaf.get(), NID_subject_alt_name, names.get(),
-                                // /*crit=*/0, /*flags=*/0));
+  ASSERT_TRUE(X509_set_notBefore(leaf.get(), not_before.get()));
+  ASSERT_TRUE(X509_set_notAfter(leaf.get(), not_after.get()));
   ASSERT_TRUE(X509_sign(leaf.get(), rsa_pkey.get(), EVP_sha256()));
-
-  // ASSERT_TRUE(Verify(leaf.get(), {root.get()}, {}, {}, 0));
 
   certs.reset(sk_X509_new_null());
   ASSERT_TRUE(sk_X509_push(certs.get(), leaf.get()));
   bio_in.reset(BIO_new_mem_buf(buf, sizeof(buf)));
-  p7.reset(PKCS7_sign(X509_dup(leaf.get()), rsa_pkey.get(), certs.get(), bio_in.get(), /*flags*/0));
+  p7.reset(PKCS7_sign(X509_dup(leaf.get()), rsa_pkey.get(), nullptr, bio_in.get(), /*flags*/0));
   ASSERT_TRUE(p7);
-  // leaf.release(); // |p7| takes ownership
-  // rsa_x509.release();  // |p7| takes ownership
   certs.release();    // |p7| takes ownership
   EXPECT_TRUE(PKCS7_type_is_signed(p7.get()));
+  EXPECT_TRUE(PKCS7_is_detached(p7.get()));
 
-  // EXPECT_TRUE(PKCS7_add_signer(p7.get(), p7si.get()));
-  // p7si.release(); // |p7| takes ownership
-
-  // TODO [childw] add parent CA?
-  // TODO [childw] need to release ownership of the store?
-  certs.reset(sk_X509_new_null());
-  ASSERT_TRUE(sk_X509_push(certs.get(), leaf.get()));
-  // rsa_x509.reset(sk_X509_value(certs.get(), 0));
   store.reset(X509_STORE_new());
   ASSERT_TRUE(X509_STORE_add_cert(store.get(), root.get()));
+  store_ctx.reset(X509_STORE_CTX_new());
+  ASSERT_TRUE(X509_STORE_CTX_init(store_ctx.get(), store.get(), leaf.get(), nullptr));
+  X509_STORE_CTX_set_time_posix(store_ctx.get(), /*flags=*/0, kReferenceTime);
 
+  certs.reset(sk_X509_new_null());
+  ASSERT_TRUE(sk_X509_push(certs.get(), root.get()));
+  bio_in.reset(BIO_new_mem_buf(buf, sizeof(buf)));
   bio_out.reset(BIO_new(BIO_s_mem()));
   EXPECT_TRUE(PKCS7_verify(p7.get(), certs.get(), store.get(), bio_in.get(), bio_out.get(), /*flags*/0));
+  root.release();
   leaf.release(); // |p7| takes ownership
 }

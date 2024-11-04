@@ -348,19 +348,19 @@ static int write_signer_info(CBB *out, const void *arg) {
   uint8_t *issuer_bytes = NULL;
   uint8_t *serial_bytes = NULL;
 
-  const int subject_len =
-      i2d_X509_NAME(X509_get_subject_name(si_data->sign_cert), &issuer_bytes);
+  const int issuer_len =
+      i2d_X509_NAME(X509_get_issuer_name(si_data->sign_cert), &issuer_bytes);
   const int serial_len = i2d_ASN1_INTEGER(
       (ASN1_INTEGER *)X509_get0_serialNumber(si_data->sign_cert),
       &serial_bytes);
 
   CBB seq, issuer_and_serial, signing_algo, null, signature;
-  if (subject_len < 0 || serial_len < 0 ||
+  if (issuer_len < 0 || serial_len < 0 ||
       !CBB_add_asn1(out, &seq, CBS_ASN1_SEQUENCE) ||
       // version
       !CBB_add_asn1_uint64(&seq, 1) ||
       !CBB_add_asn1(&seq, &issuer_and_serial, CBS_ASN1_SEQUENCE) ||
-      !CBB_add_bytes(&issuer_and_serial, issuer_bytes, subject_len) ||
+      !CBB_add_bytes(&issuer_and_serial, issuer_bytes, issuer_len) ||
       !CBB_add_bytes(&issuer_and_serial, serial_bytes, serial_len) ||
       !write_sha256_ai(&seq, NULL) ||
       !CBB_add_asn1(&seq, &signing_algo, CBS_ASN1_SEQUENCE) ||
@@ -395,12 +395,31 @@ PKCS7 *PKCS7_sign(X509 *sign_cert, EVP_PKEY *pkey, STACK_OF(X509) *certs,
     if (!PKCS7_bundle_certificates(&cbb, certs)) {
       goto out;
     }
-  } else if (sign_cert != NULL && pkey != NULL /*&& certs == NULL*/ &&
+  } else if (sign_cert != NULL && pkey != NULL && certs == NULL &&
              data != NULL &&
-             // flags == (PKCS7_NOATTR | PKCS7_BINARY | PKCS7_NOCERTS |
-                       // PKCS7_DETACHED) &&
+             flags == (PKCS7_NOATTR | PKCS7_BINARY | PKCS7_NOCERTS |
+                       PKCS7_DETACHED) &&
              EVP_PKEY_id(pkey) == NID_rsaEncryption) {
     // sign-file.c from the Linux kernel.
+    const size_t signature_max_len = EVP_PKEY_size(pkey);
+    struct signer_info_data si_data = {
+        .sign_cert = sign_cert,
+        .signature = OPENSSL_malloc(signature_max_len),
+    };
+
+    if (!si_data.signature ||
+        !sign_sha256(si_data.signature, &si_data.signature_len,
+                     signature_max_len, pkey, data) ||
+        !pkcs7_add_signed_data(&cbb, write_sha256_ai, /*cert_crl_cb=*/NULL,
+                               write_signer_info, &si_data)) {
+      OPENSSL_free(si_data.signature);
+      goto out;
+    }
+    OPENSSL_free(si_data.signature);
+   } else if (sign_cert != NULL && pkey != NULL &&
+             data != NULL &&
+             !(flags & (PKCS7_DETACHED))) {
+     // TODO [childw] what all do we need here?
     const size_t signature_max_len = EVP_PKEY_size(pkey);
     struct signer_info_data si_data = {
         .sign_cert = sign_cert,
