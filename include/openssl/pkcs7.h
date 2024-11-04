@@ -405,6 +405,8 @@ OPENSSL_EXPORT BIO *PKCS7_dataDecode(PKCS7 *p7, EVP_PKEY *pkey, BIO *in_bio, X50
 
 // PKCS7_sign [Deprecated]
 //
+// TODO [childw] update this
+//
 // Only |PKCS7_DETACHED| and a combination of
 // "PKCS7_DETACHED|PKCS7_BINARY|PKCS7_NOATTR|PKCS7_PARTIAL" is supported.
 // See |PKCS7_sign| for more details.
@@ -454,6 +456,8 @@ OPENSSL_EXPORT BIO *PKCS7_dataDecode(PKCS7 *p7, EVP_PKEY *pkey, BIO *in_bio, X50
 
 // PKCS7_sign can operate in two modes to provide some backwards compatibility:
 //
+// TODO [childw] update this
+//
 // The first mode assembles |certs| into a PKCS#7 signed data ContentInfo with
 // external data and no signatures. It returns a newly-allocated |PKCS7| on
 // success or NULL on error. |sign_cert| and |pkey| must be NULL. |data| is
@@ -481,6 +485,7 @@ extern "C++" {
 BSSL_NAMESPACE_BEGIN
 
 BORINGSSL_MAKE_DELETER(PKCS7, PKCS7_free)
+BORINGSSL_MAKE_DELETER(PKCS7_SIGNER_INFO, PKCS7_SIGNER_INFO_free)
 
 BSSL_NAMESPACE_END
 }  // extern C++

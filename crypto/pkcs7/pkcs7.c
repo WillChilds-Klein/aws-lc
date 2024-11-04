@@ -1490,23 +1490,11 @@ BIO *PKCS7_dataDecode(PKCS7 *p7, EVP_PKEY *pkey, BIO *in_bio, X509 *pcert) {
     if (EVP_CipherInit_ex(evp_ctx, cipher, NULL, NULL, NULL, 0) <= 0)
       goto err;
     uint8_t iv[EVP_MAX_IV_LENGTH];
-    // CBS iv_cbs, iv_out;
-    // int iv_present;
-    // TODO [childw] all we need to do here is extract the fscking IV.
-    // TODO [childw] assert that enc_alg->parameter->value.octet_string->length == EVP_CIPHER_CTX_iv_length(evp_ctx) ?
-    // CBS_init(&iv_cbs, enc_alg->parameter->value.octet_string->data, enc_alg->parameter->value.octet_string->length);
-    // if (!CBS_get_optional_asn1_octet_string(&iv_cbs, &iv_out, &iv_present, /*tag*/0) ||
-        // !iv_present) {
-      // goto err;
-    // }
     OPENSSL_memcpy(iv, enc_alg->parameter->value.octet_string->data, enc_alg->parameter->value.octet_string->length);
     if (enc_alg->parameter->value.octet_string->length != (int) EVP_CIPHER_CTX_iv_length(evp_ctx)) {
       OPENSSL_PUT_ERROR(PKCS7, ERR_R_PKCS7_LIB);
       goto err;
     }
-    // if (!i2d_ASN1_OCTET_STRING(enc_alg->parameter->value.octet_string., (uint8_t**) &iv)) {
-      // goto err;
-    // }
     if (EVP_CipherInit_ex(evp_ctx, NULL, NULL, NULL, iv, 0) <= 0) {
       goto err;
     }
@@ -1765,39 +1753,6 @@ static int PKCS7_signatureVerify(BIO *bio, PKCS7 *p7, PKCS7_SIGNER_INFO *si,
       // TODO [childw] can we get away with not supporting this?
       OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_WRONG_CONTENT_TYPE);
       goto err;
-        // unsigned char md_dat[EVP_MAX_MD_SIZE];
-        // unsigned int md_len;
-        // int alen;
-        // ASN1_OCTET_STRING *message_digest;
-        //
-        // if (!EVP_DigestFinal_ex(mdc_tmp, md_dat, &md_len))
-        //     goto err;
-        // message_digest = PKCS7_digest_from_attributes(sk);
-        // if (!message_digest) {
-        //     OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_UNABLE_TO_FIND_MESSAGE_DIGEST);
-        //     goto err;
-        // }
-        // if ((message_digest->length != (int)md_len) ||
-        //     (memcmp(message_digest->data, md_dat, md_len))) {
-        //     OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_DIGEST_FAILURE);
-        //     ret = -1;
-        //     goto err;
-        // }
-        //
-        // const EVP_MD *md = EVP_get_digestbynid(md_type);
-        // if (md == NULL || !EVP_VerifyInit_ex(mdc_tmp, md, NULL)) {
-        //     goto err;
-        // }
-        //
-        // alen = ASN1_item_i2d((ASN1_VALUE *)sk, &abuf,
-        //                      ASN1_ITEM_rptr(PKCS7_ATTR_VERIFY));
-        // if (alen <= 0 || abuf == NULL) {
-        //     OPENSSL_PUT_ERROR(PKCS7, ERR_R_ASN1_LIB);
-        //     ret = -1;
-        //     goto err;
-        // }
-        // if (!EVP_VerifyUpdate(mdc_tmp, abuf, alen))
-        //     goto err;
     }
 
     os = si->enc_digest;

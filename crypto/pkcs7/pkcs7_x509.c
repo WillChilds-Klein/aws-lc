@@ -345,11 +345,11 @@ static int write_signer_info(CBB *out, const void *arg) {
   const struct signer_info_data *const si_data = arg;
 
   int ret = 0;
-  uint8_t *subject_bytes = NULL;
+  uint8_t *issuer_bytes = NULL;
   uint8_t *serial_bytes = NULL;
 
   const int subject_len =
-      i2d_X509_NAME(X509_get_subject_name(si_data->sign_cert), &subject_bytes);
+      i2d_X509_NAME(X509_get_subject_name(si_data->sign_cert), &issuer_bytes);
   const int serial_len = i2d_ASN1_INTEGER(
       (ASN1_INTEGER *)X509_get0_serialNumber(si_data->sign_cert),
       &serial_bytes);
@@ -360,7 +360,7 @@ static int write_signer_info(CBB *out, const void *arg) {
       // version
       !CBB_add_asn1_uint64(&seq, 1) ||
       !CBB_add_asn1(&seq, &issuer_and_serial, CBS_ASN1_SEQUENCE) ||
-      !CBB_add_bytes(&issuer_and_serial, subject_bytes, subject_len) ||
+      !CBB_add_bytes(&issuer_and_serial, issuer_bytes, subject_len) ||
       !CBB_add_bytes(&issuer_and_serial, serial_bytes, serial_len) ||
       !write_sha256_ai(&seq, NULL) ||
       !CBB_add_asn1(&seq, &signing_algo, CBS_ASN1_SEQUENCE) ||
@@ -375,8 +375,7 @@ static int write_signer_info(CBB *out, const void *arg) {
   ret = 1;
 
 out:
-  OPENSSL_free(subject_bytes);
-  OPENSSL_free(serial_bytes);
+  OPENSSL_free(issuer_bytes);
   return ret;
 }
 
