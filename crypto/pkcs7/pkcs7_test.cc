@@ -1799,51 +1799,56 @@ TEST(PKCS7Test, TestSigned) {
   bssl::UniquePtr<X509_STORE> store;
   bssl::UniquePtr<X509_STORE_CTX> store_ctx;
   bssl::UniquePtr<ASN1_TIME> not_before, not_after;
+  bssl::UniquePtr<RSA> root_rsa, leaf_rsa;
+  bssl::UniquePtr<EVP_PKEY> root_pkey, leaf_pkey;
   uint8_t buf[64];
 
   OPENSSL_memset(buf, 'A', sizeof(buf));
 
-  bssl::UniquePtr<RSA> rsa(RSA_new());
-  ASSERT_TRUE(rsa);
-  ASSERT_TRUE(RSA_generate_key_fips(rsa.get(), 2048, nullptr));
-  bssl::UniquePtr<EVP_PKEY> rsa_pkey(EVP_PKEY_new());
-  ASSERT_TRUE(rsa_pkey);
-  ASSERT_TRUE(EVP_PKEY_set1_RSA(rsa_pkey.get(), rsa.get()));
+  root_rsa.reset(RSA_new());
+  ASSERT_TRUE(RSA_generate_key_fips(root_rsa.get(), 2048, nullptr));
+  root_pkey.reset(EVP_PKEY_new());
+  ASSERT_TRUE(EVP_PKEY_set1_RSA(root_pkey.get(), root_rsa.get()));
+  leaf_rsa.reset(RSA_new());
+  ASSERT_TRUE(RSA_generate_key_fips(leaf_rsa.get(), 2048, nullptr));
+  leaf_pkey.reset(EVP_PKEY_new());
+  ASSERT_TRUE(EVP_PKEY_set1_RSA(leaf_pkey.get(), leaf_rsa.get()));
 
+  // |PKCS7_verify| creates its own X509_STORE_CTX internally, so we can't set
+  // relative validity time on the store it uses from here (by default
+  // X509_STORE_CTX uses std's |time|). So, we set a wide validity gap here.
+  // |not_after| won't need to be updated until April 2262 and |not_before|
+  // would only need to be reconsidered in the advent of a time machine.
   not_before.reset(ASN1_TIME_set_posix(nullptr, 0L));
-  not_after.reset(ASN1_TIME_set_posix(nullptr, INT_MAX));
+  not_after.reset(ASN1_TIME_set_posix(nullptr, LLONG_MAX));
 
   bssl::UniquePtr<X509> root =
-    MakeTestCert("Root", "Root", rsa_pkey.get(), /*is_ca=*/true);
+    MakeTestCert("Root", "Root", root_pkey.get(), /*is_ca=*/true);
   ASSERT_TRUE(root);
   ASSERT_TRUE(X509_set_notBefore(root.get(), not_before.get()));
   ASSERT_TRUE(X509_set_notAfter(root.get(), not_after.get()));
-  ASSERT_TRUE(X509_sign(root.get(), rsa_pkey.get(), EVP_sha256()));
+  // Root signs itself
+  ASSERT_TRUE(X509_sign(root.get(), root_pkey.get(), EVP_sha256()));
 
   bssl::UniquePtr<X509> leaf =
-      MakeTestCert("Root", "Leaf", rsa_pkey.get(), /*is_ca=*/false);
+      MakeTestCert("Root", "Leaf", leaf_pkey.get(), /*is_ca=*/false);
   ASSERT_TRUE(leaf);
   ASSERT_TRUE(X509_set_notBefore(leaf.get(), not_before.get()));
   ASSERT_TRUE(X509_set_notAfter(leaf.get(), not_after.get()));
-  ASSERT_TRUE(X509_sign(leaf.get(), rsa_pkey.get(), EVP_sha256()));
+  // Root signs leaf
+  ASSERT_TRUE(X509_sign(leaf.get(), root_pkey.get(), EVP_sha256()));
 
-  certs.reset(sk_X509_new_null());
-  ASSERT_TRUE(sk_X509_push(certs.get(), leaf.get()));
   bio_in.reset(BIO_new_mem_buf(buf, sizeof(buf)));
-  p7.reset(PKCS7_sign(X509_dup(leaf.get()), rsa_pkey.get(), nullptr, bio_in.get(), /*flags*/0));
+  p7.reset(PKCS7_sign(X509_dup(leaf.get()), leaf_pkey.get(), nullptr, bio_in.get(), /*flags*/0));
   ASSERT_TRUE(p7);
-  certs.release();    // |p7| takes ownership
   EXPECT_TRUE(PKCS7_type_is_signed(p7.get()));
   EXPECT_TRUE(PKCS7_is_detached(p7.get()));
 
   store.reset(X509_STORE_new());
   ASSERT_TRUE(X509_STORE_add_cert(store.get(), root.get()));
-  store_ctx.reset(X509_STORE_CTX_new());
-  ASSERT_TRUE(X509_STORE_CTX_init(store_ctx.get(), store.get(), leaf.get(), nullptr));
-  X509_STORE_CTX_set_time_posix(store_ctx.get(), /*flags=*/0, kReferenceTime);
 
   certs.reset(sk_X509_new_null());
-  ASSERT_TRUE(sk_X509_push(certs.get(), root.get()));
+  ASSERT_TRUE(sk_X509_push(certs.get(), leaf.get()));
   bio_in.reset(BIO_new_mem_buf(buf, sizeof(buf)));
   bio_out.reset(BIO_new(BIO_s_mem()));
   EXPECT_TRUE(PKCS7_verify(p7.get(), certs.get(), store.get(), bio_in.get(), bio_out.get(), /*flags*/0));
