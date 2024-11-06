@@ -512,8 +512,8 @@ PKCS7 *PKCS7_sign(X509 *sign_cert, EVP_PKEY *pkey, STACK_OF(X509) *certs,
     }
     OPENSSL_free(si_data.signature);
    } else if (sign_cert != NULL && pkey != NULL &&
-             data != NULL &&
-             !(flags & (PKCS7_DETACHED))) {
+             data != NULL) {
+             // !(flags & (PKCS7_DETACHED))) {
      if ((ret = PKCS7_new()) == NULL) {
        OPENSSL_PUT_ERROR(PKCS7, ERR_R_PKCS7_LIB);
        goto out;
@@ -534,6 +534,14 @@ PKCS7 *PKCS7_sign(X509 *sign_cert, EVP_PKEY *pkey, STACK_OF(X509) *certs,
        for (size_t i = 0; i < sk_X509_num(certs); i++) {
          if (!PKCS7_add_certificate(ret, sk_X509_value(certs, i)))
            goto out;
+       }
+     }
+
+
+     if (flags & PKCS7_DETACHED) {
+       if (PKCS7_type_is_data(ret->d.sign->contents)) {
+         ASN1_OCTET_STRING_free(ret->d.sign->contents->d.data);
+         ret->d.sign->contents->d.data = NULL;
        }
      }
 
