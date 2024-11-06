@@ -349,7 +349,7 @@ static int write_signer_info(CBB *out, const void *arg) {
   uint8_t *serial_bytes = NULL;
 
   const int issuer_len =
-      i2d_X509_NAME(X509_get_issuer_name(si_data->sign_cert), &issuer_bytes);
+      i2d_X509_NAME(X509_get_subject_name(si_data->sign_cert), &issuer_bytes);
   const int serial_len = i2d_ASN1_INTEGER(
       (ASN1_INTEGER *)X509_get0_serialNumber(si_data->sign_cert),
       &serial_bytes);
@@ -376,7 +376,102 @@ static int write_signer_info(CBB *out, const void *arg) {
 
 out:
   OPENSSL_free(issuer_bytes);
+  OPENSSL_free(serial_bytes);
   return ret;
+}
+
+static PKCS7_SIGNER_INFO *PKCS7_add_signature(PKCS7 *p7, X509 *x509, EVP_PKEY *pkey,
+                                       const EVP_MD *dgst)
+{
+  PKCS7_SIGNER_INFO *si = NULL;
+
+  if (dgst == NULL) {
+    // TODO [childw] OSSL defaults to SHA1 per its docs, which is probably insecure
+    // https://linux.die.net/man/3/pkcs7_sign
+    int def_nid = NID_sha256;
+    // if (EVP_PKEY_get_default_digest_nid(pkey, &def_nid) <= 0)
+      // goto err;
+    dgst = EVP_get_digestbynid(def_nid);
+    if (dgst == NULL) {
+      OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_NO_DEFAULT_DIGEST);
+      goto err;
+    }
+  }
+
+  if ((si = PKCS7_SIGNER_INFO_new()) == NULL)
+    goto err;
+  if (PKCS7_SIGNER_INFO_set(si, x509, pkey, dgst) <= 0)
+    goto err;
+  if (!PKCS7_add_signer(p7, si))
+    goto err;
+  return si;
+  err:
+     PKCS7_SIGNER_INFO_free(si);
+  return NULL;
+}
+
+static PKCS7_SIGNER_INFO *PKCS7_sign_add_signer(PKCS7 *p7, X509 *signcert,
+                                         EVP_PKEY *pkey, const EVP_MD *md,
+                                         int flags)
+{
+    PKCS7_SIGNER_INFO *si = NULL;
+    STACK_OF(X509_ALGOR) *smcap = NULL;
+
+    if (!X509_check_private_key(signcert, pkey)) {
+        OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_PRIVATE_KEY_DOES_NOT_MATCH_CERTIFICATE);
+        return NULL;
+    }
+
+    if ((si = PKCS7_add_signature(p7, signcert, pkey, md)) == NULL) {
+        OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_PKCS7_ADD_SIGNATURE_ERROR);
+        return NULL;
+    }
+
+    if (!(flags & PKCS7_NOCERTS)) {
+        if (!PKCS7_add_certificate(p7, signcert))
+            goto err;
+    }
+
+  // TODO [childw] this means we tacitly assume + enforce PKCS7_NOATTR. need to
+  // document this and other implicit flags
+    // if (!(flags & PKCS7_NOATTR)) {
+    //     if (!PKCS7_add_attrib_content_type(si, NULL))
+    //         goto err;
+    //     /* Add SMIMECapabilities */
+    //     if (!(flags & PKCS7_NOSMIMECAP)) {
+    //         if ((smcap = sk_X509_ALGOR_new_null()) == NULL) {
+    //             ERR_raise(ERR_LIB_PKCS7, ERR_R_CRYPTO_LIB);
+    //             goto err;
+    //         }
+    //         if (!add_cipher_smcap(smcap, NID_aes_256_cbc, -1)
+    //             || !add_digest_smcap(smcap, NID_id_GostR3411_2012_256, -1)
+    //             || !add_digest_smcap(smcap, NID_id_GostR3411_2012_512, -1)
+    //             || !add_digest_smcap(smcap, NID_id_GostR3411_94, -1)
+    //             || !add_cipher_smcap(smcap, NID_id_Gost28147_89, -1)
+    //             || !add_cipher_smcap(smcap, NID_aes_192_cbc, -1)
+    //             || !add_cipher_smcap(smcap, NID_aes_128_cbc, -1)
+    //             || !add_cipher_smcap(smcap, NID_des_ede3_cbc, -1)
+    //             || !add_cipher_smcap(smcap, NID_rc2_cbc, 128)
+    //             || !add_cipher_smcap(smcap, NID_rc2_cbc, 64)
+    //             || !add_cipher_smcap(smcap, NID_des_cbc, -1)
+    //             || !add_cipher_smcap(smcap, NID_rc2_cbc, 40)
+    //             || !PKCS7_add_attrib_smimecap(si, smcap))
+    //             goto err;
+    //         sk_X509_ALGOR_pop_free(smcap, X509_ALGOR_free);
+    //         smcap = NULL;
+    //     }
+    //     if (flags & PKCS7_REUSE_DIGEST) {
+    //         if (!pkcs7_copy_existing_digest(p7, si))
+    //             goto err;
+    //         if (!(flags & PKCS7_PARTIAL)
+    //             && !PKCS7_SIGNER_INFO_sign(si))
+    //             goto err;
+    //     }
+    // }
+    return si;
+ err:
+    sk_X509_ALGOR_pop_free(smcap, X509_ALGOR_free);
+    return NULL;
 }
 
 PKCS7 *PKCS7_sign(X509 *sign_cert, EVP_PKEY *pkey, STACK_OF(X509) *certs,
@@ -419,22 +514,34 @@ PKCS7 *PKCS7_sign(X509 *sign_cert, EVP_PKEY *pkey, STACK_OF(X509) *certs,
    } else if (sign_cert != NULL && pkey != NULL &&
              data != NULL &&
              !(flags & (PKCS7_DETACHED))) {
-     // TODO [childw] what all do we need here?
-    const size_t signature_max_len = EVP_PKEY_size(pkey);
-    struct signer_info_data si_data = {
-        .sign_cert = sign_cert,
-        .signature = OPENSSL_malloc(signature_max_len),
-    };
+     if ((ret = PKCS7_new()) == NULL) {
+       OPENSSL_PUT_ERROR(PKCS7, ERR_R_PKCS7_LIB);
+       goto out;
+     }
 
-    if (!si_data.signature ||
-        !sign_sha256(si_data.signature, &si_data.signature_len,
-                     signature_max_len, pkey, data) ||
-        !pkcs7_add_signed_data(&cbb, write_sha256_ai, /*cert_crl_cb=*/NULL,
-                               write_signer_info, &si_data)) {
-      OPENSSL_free(si_data.signature);
-      goto out;
-    }
-    OPENSSL_free(si_data.signature);
+     if (!PKCS7_set_type(ret, NID_pkcs7_signed))
+       goto out;
+
+     if (!PKCS7_content_new(ret, NID_pkcs7_data))
+       goto out;
+
+     if (pkey && !PKCS7_sign_add_signer(ret, sign_cert, pkey, /*md*/NULL, flags)) {
+       OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_PKCS7_ADD_SIGNER_ERROR);
+       goto out;
+     }
+
+     if (!(flags & PKCS7_NOCERTS)) {
+       for (size_t i = 0; i < sk_X509_num(certs); i++) {
+         if (!PKCS7_add_certificate(ret, sk_X509_value(certs, i)))
+           goto out;
+       }
+     }
+
+     if (flags & (PKCS7_STREAM | PKCS7_PARTIAL))
+       goto out;
+
+     if (PKCS7_final(ret, data, flags))
+       goto out;
   } else {
     printf("FOOBAR %p %p %p %p %d\n", sign_cert, pkey, certs, data, EVP_PKEY_id(pkey));
     printf("FLAGS %d %d %d %d\n",

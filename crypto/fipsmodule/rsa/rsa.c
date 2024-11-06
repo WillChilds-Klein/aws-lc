@@ -969,6 +969,16 @@ int rsa_verify_no_self_test(int hash_nid, const uint8_t *digest,
 
   // Check that the computed hash matches the expected hash
   if (OPENSSL_memcmp(buf, signed_msg, len) != 0) {
+    printf("BUF 1: ");
+    for (size_t ii = 0; ii < len; ii++) {
+      printf("%02X", (unsigned)buf[ii]);
+    }
+    printf("\n");
+    printf("BUF 2: ");
+    for (size_t ii = 0; ii < len; ii++) {
+      printf("%02X", (unsigned)signed_msg[ii]);
+    }
+    printf("\n");
     OPENSSL_PUT_ERROR(RSA, RSA_R_MISMATCHED_SIGNATURE);
     goto out;
   }

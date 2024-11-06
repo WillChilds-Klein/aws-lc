@@ -1020,8 +1020,7 @@ int PKCS7_dataFinal(PKCS7 *p7, BIO *bio) {
       if (abuflen == 0 || (abuf = OPENSSL_malloc(abuflen)) == NULL)
         goto err;
 
-      if (!EVP_SignInit_ex(ctx_tmp, ctx_tmp->digest, NULL) ||
-          !EVP_SignFinal(ctx_tmp, abuf, &abuflen, si->pkey)) {
+      if (!EVP_SignFinal(ctx_tmp, abuf, &abuflen, si->pkey)) {
         OPENSSL_free(abuf);
         OPENSSL_PUT_ERROR(PKCS7, ERR_R_EVP_LIB);
         goto err;
