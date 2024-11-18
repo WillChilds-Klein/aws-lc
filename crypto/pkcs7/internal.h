@@ -110,10 +110,7 @@ OPENSSL_EXPORT int BIO_set_cipher(BIO *b, const EVP_CIPHER *cipher,
                                   const unsigned char *key,
                                   const unsigned char *iv, int enc);
 
-
-// STACK_OF(X509) *PKCS7_get0_signers(PKCS7 *p7, STACK_OF(X509) *certs, int flags);
-ASN1_OCTET_STRING *PKCS7_get_octet_string(PKCS7 *p7);
-int PKCS7_type_is_other(const PKCS7 *p7);
+OPENSSL_EXPORT int PKCS7_final(PKCS7 *p7, BIO *data, int flags);
 
 #define BIO_get_cipher_ctx(bio, contents) BIO_ctrl(bio, BIO_C_GET_CIPHER_CTX, 0, \
                                                 (char *)(contents))

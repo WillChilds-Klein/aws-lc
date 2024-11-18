@@ -1328,7 +1328,8 @@ hJTbHtjEDJ7BHLC/CNUhXbpyyu1y
   //                         PKCS7_BINARY | PKCS7_NOCERTS | PKCS7_DETACHED));
   // EXPECT_FALSE(
   //     PKCS7_sign(cert.get(), key.get(), /*certs=*/nullptr, data_bio.get(),
-  //                PKCS7_NOATTR | PKCS7_TEXT | PKCS7_NOCERTS | PKCS7_DETACHED));
+  //                PKCS7_NOATTR | PKCS7_TEXT | PKCS7_NOCERTS |
+  //                PKCS7_DETACHED));
   // EXPECT_FALSE(PKCS7_sign(cert.get(), key.get(), /*certs=*/nullptr,
   //                         data_bio.get(),
   //                         PKCS7_NOATTR | PKCS7_BINARY | PKCS7_DETACHED));
@@ -1570,191 +1571,256 @@ TEST(PKCS7Test, GettersSetters) {
 }
 
 TEST(PKCS7Test, BIO) {
-    bssl::UniquePtr<PKCS7> p7;
-    bssl::UniquePtr<BIO> bio;
-    bssl::UniquePtr<STACK_OF(X509)> certs;
-    bssl::UniquePtr<X509> rsa_x509;
-    size_t p7_der_len;
-    const uint8_t *p7_ptr;
+  bssl::UniquePtr<PKCS7> p7;
+  bssl::UniquePtr<BIO> bio;
+  bssl::UniquePtr<STACK_OF(X509)> certs;
+  bssl::UniquePtr<X509> rsa_x509;
+  size_t p7_der_len;
+  const uint8_t *p7_ptr;
 
-    p7_ptr = kPKCS7SignedWithSignerInfo;
-    p7_der_len = sizeof(kPKCS7SignedWithSignerInfo);
-    p7.reset(d2i_PKCS7(nullptr, &p7_ptr, p7_der_len));
-    ASSERT_TRUE(p7);
-    EXPECT_TRUE(PKCS7_type_is_signed(p7.get()));
-    bio.reset(PKCS7_dataInit(p7.get(), nullptr));
-    EXPECT_TRUE(bio);
-    EXPECT_TRUE(PKCS7_dataFinal(p7.get(), bio.get()));
+  p7_ptr = kPKCS7SignedWithSignerInfo;
+  p7_der_len = sizeof(kPKCS7SignedWithSignerInfo);
+  p7.reset(d2i_PKCS7(nullptr, &p7_ptr, p7_der_len));
+  ASSERT_TRUE(p7);
+  EXPECT_TRUE(PKCS7_type_is_signed(p7.get()));
+  bio.reset(PKCS7_dataInit(p7.get(), nullptr));
+  EXPECT_TRUE(bio);
+  EXPECT_TRUE(PKCS7_dataFinal(p7.get(), bio.get()));
 
-    // parse a cert for use with recipient infos
-    bssl::UniquePtr<RSA> rsa(RSA_new());
-    ASSERT_TRUE(rsa);
-    ASSERT_TRUE(RSA_generate_key_fips(rsa.get(), 2048, nullptr));
-    bssl::UniquePtr<EVP_PKEY> rsa_pkey(EVP_PKEY_new());
-    ASSERT_TRUE(rsa_pkey);
-    ASSERT_TRUE(EVP_PKEY_set1_RSA(rsa_pkey.get(), rsa.get()));
-    certs.reset(sk_X509_new_null());
-    bio.reset(BIO_new_mem_buf(kPEMCert, strlen(kPEMCert)));
-    ASSERT_TRUE(bio);
-    certs.reset(sk_X509_new_null());
-    ASSERT_TRUE(certs);
-    ASSERT_TRUE(PKCS7_get_PEM_certificates(certs.get(), bio.get()));
-    ASSERT_EQ(1U, sk_X509_num(certs.get()));
-    rsa_x509.reset(sk_X509_pop(certs.get()));
-    ASSERT_TRUE(X509_set_pubkey(rsa_x509.get(), rsa_pkey.get()));
+  // parse a cert for use with recipient infos
+  bssl::UniquePtr<RSA> rsa(RSA_new());
+  ASSERT_TRUE(rsa);
+  ASSERT_TRUE(RSA_generate_key_fips(rsa.get(), 2048, nullptr));
+  bssl::UniquePtr<EVP_PKEY> rsa_pkey(EVP_PKEY_new());
+  ASSERT_TRUE(rsa_pkey);
+  ASSERT_TRUE(EVP_PKEY_set1_RSA(rsa_pkey.get(), rsa.get()));
+  certs.reset(sk_X509_new_null());
+  bio.reset(BIO_new_mem_buf(kPEMCert, strlen(kPEMCert)));
+  ASSERT_TRUE(bio);
+  certs.reset(sk_X509_new_null());
+  ASSERT_TRUE(certs);
+  ASSERT_TRUE(PKCS7_get_PEM_certificates(certs.get(), bio.get()));
+  ASSERT_EQ(1U, sk_X509_num(certs.get()));
+  rsa_x509.reset(sk_X509_pop(certs.get()));
+  ASSERT_TRUE(X509_set_pubkey(rsa_x509.get(), rsa_pkey.get()));
 
-    p7_ptr = kEnvelopedData;
-    p7_der_len = sizeof(kEnvelopedData);
-    p7.reset(d2i_PKCS7(nullptr, &p7_ptr, p7_der_len));
-    ASSERT_TRUE(p7);
-    EXPECT_TRUE(PKCS7_type_is_enveloped(p7.get()));
-    // need to initialize cipher for enveloped data
-    EXPECT_TRUE(PKCS7_set_cipher(p7.get(), EVP_aes_128_ctr()));
-    // attach a (non-serialized, unrelated) cert to the RECIP_INFO
-    STACK_OF(PKCS7_RECIP_INFO) *p7ri_sk = PKCS7_get_recipient_info(p7.get());
-    PKCS7_RECIP_INFO *p7ri = sk_PKCS7_RECIP_INFO_value(p7ri_sk, 0);
-    ASSERT_TRUE(p7ri);
-    EXPECT_TRUE(PKCS7_RECIP_INFO_set(p7ri, rsa_x509.get()));
-    X509_up_ref(rsa_x509.get());
-    bio.reset(PKCS7_dataInit(p7.get(), nullptr));
-    EXPECT_TRUE(bio);
-    EXPECT_TRUE(PKCS7_dataFinal(p7.get(), bio.get()));
+  p7_ptr = kEnvelopedData;
+  p7_der_len = sizeof(kEnvelopedData);
+  p7.reset(d2i_PKCS7(nullptr, &p7_ptr, p7_der_len));
+  ASSERT_TRUE(p7);
+  EXPECT_TRUE(PKCS7_type_is_enveloped(p7.get()));
+  // need to initialize cipher for enveloped data
+  EXPECT_TRUE(PKCS7_set_cipher(p7.get(), EVP_aes_128_ctr()));
+  // attach a (non-serialized, unrelated) cert to the RECIP_INFO
+  STACK_OF(PKCS7_RECIP_INFO) *p7ri_sk = PKCS7_get_recipient_info(p7.get());
+  PKCS7_RECIP_INFO *p7ri = sk_PKCS7_RECIP_INFO_value(p7ri_sk, 0);
+  ASSERT_TRUE(p7ri);
+  EXPECT_TRUE(PKCS7_RECIP_INFO_set(p7ri, rsa_x509.get()));
+  X509_up_ref(rsa_x509.get());
+  bio.reset(PKCS7_dataInit(p7.get(), nullptr));
+  EXPECT_TRUE(bio);
+  EXPECT_TRUE(PKCS7_dataFinal(p7.get(), bio.get()));
 
-    bio.reset(nullptr);
-    p7.reset(PKCS7_new());
-    ASSERT_TRUE(p7);
-    ASSERT_TRUE(PKCS7_set_type(p7.get(), NID_pkcs7_signed));
-    ASSERT_TRUE(PKCS7_content_new(p7.get(), NID_pkcs7_data));
-    bio.reset(PKCS7_dataInit(p7.get(), nullptr));
-    EXPECT_TRUE(bio);
-    EXPECT_TRUE(PKCS7_dataFinal(p7.get(), bio.get()));
+  bio.reset(nullptr);
+  p7.reset(PKCS7_new());
+  ASSERT_TRUE(p7);
+  ASSERT_TRUE(PKCS7_set_type(p7.get(), NID_pkcs7_signed));
+  ASSERT_TRUE(PKCS7_content_new(p7.get(), NID_pkcs7_data));
+  bio.reset(PKCS7_dataInit(p7.get(), nullptr));
+  EXPECT_TRUE(bio);
+  EXPECT_TRUE(PKCS7_dataFinal(p7.get(), bio.get()));
 
-    bio.reset(nullptr);
-    p7.reset(PKCS7_new());
-    ASSERT_TRUE(p7);
-    ASSERT_TRUE(PKCS7_set_type(p7.get(), NID_pkcs7_signedAndEnveloped));
-    ASSERT_TRUE(PKCS7_set_cipher(p7.get(), EVP_aes_128_ctr()));
-    bio.reset(PKCS7_dataInit(p7.get(), nullptr));
-    EXPECT_TRUE(bio);
-    EXPECT_TRUE(PKCS7_dataFinal(p7.get(), bio.get()));
+  bio.reset(nullptr);
+  p7.reset(PKCS7_new());
+  ASSERT_TRUE(p7);
+  ASSERT_TRUE(PKCS7_set_type(p7.get(), NID_pkcs7_signedAndEnveloped));
+  ASSERT_TRUE(PKCS7_set_cipher(p7.get(), EVP_aes_128_ctr()));
+  bio.reset(PKCS7_dataInit(p7.get(), nullptr));
+  EXPECT_TRUE(bio);
+  EXPECT_TRUE(PKCS7_dataFinal(p7.get(), bio.get()));
 
-    p7.reset(PKCS7_new());
-    ASSERT_TRUE(p7);
-    ASSERT_TRUE(PKCS7_set_type(p7.get(), NID_pkcs7_digest));
-    ASSERT_TRUE(PKCS7_set_digest(p7.get(), EVP_sha256()));
-    ASSERT_TRUE(PKCS7_content_new(p7.get(), NID_pkcs7_data));
-    bio.reset(PKCS7_dataInit(p7.get(), nullptr));
-    EXPECT_TRUE(bio);
-    EXPECT_TRUE(PKCS7_dataFinal(p7.get(), bio.get()));
+  p7.reset(PKCS7_new());
+  ASSERT_TRUE(p7);
+  ASSERT_TRUE(PKCS7_set_type(p7.get(), NID_pkcs7_digest));
+  ASSERT_TRUE(PKCS7_set_digest(p7.get(), EVP_sha256()));
+  ASSERT_TRUE(PKCS7_content_new(p7.get(), NID_pkcs7_data));
+  bio.reset(PKCS7_dataInit(p7.get(), nullptr));
+  EXPECT_TRUE(bio);
+  EXPECT_TRUE(PKCS7_dataFinal(p7.get(), bio.get()));
 
-    p7.reset(PKCS7_new());
-    ASSERT_TRUE(p7);
-    ASSERT_TRUE(PKCS7_set_type(p7.get(), NID_pkcs7_data));
-    bio.reset(PKCS7_dataInit(p7.get(), nullptr));
-    EXPECT_TRUE(bio);
-    EXPECT_TRUE(PKCS7_dataFinal(p7.get(), bio.get()));
+  p7.reset(PKCS7_new());
+  ASSERT_TRUE(p7);
+  ASSERT_TRUE(PKCS7_set_type(p7.get(), NID_pkcs7_data));
+  bio.reset(PKCS7_dataInit(p7.get(), nullptr));
+  EXPECT_TRUE(bio);
+  EXPECT_TRUE(PKCS7_dataFinal(p7.get(), bio.get()));
 
-    p7.reset(PKCS7_new());
-    ASSERT_TRUE(p7);
-    ASSERT_TRUE(PKCS7_set_type(p7.get(), NID_pkcs7_enveloped));
-    ASSERT_TRUE(PKCS7_set_cipher(p7.get(), EVP_aes_128_ctr()));
-    bio.reset(PKCS7_dataInit(p7.get(), nullptr));
-    EXPECT_TRUE(bio);
-    EXPECT_TRUE(PKCS7_dataFinal(p7.get(), bio.get()));
+  p7.reset(PKCS7_new());
+  ASSERT_TRUE(p7);
+  ASSERT_TRUE(PKCS7_set_type(p7.get(), NID_pkcs7_enveloped));
+  ASSERT_TRUE(PKCS7_set_cipher(p7.get(), EVP_aes_128_ctr()));
+  bio.reset(PKCS7_dataInit(p7.get(), nullptr));
+  EXPECT_TRUE(bio);
+  EXPECT_TRUE(PKCS7_dataFinal(p7.get(), bio.get()));
 
-    // NID_pkcs7_encrypted not supported, not needed by ruby
-    p7.reset(PKCS7_new());
-    ASSERT_TRUE(p7);
-    ASSERT_TRUE(PKCS7_set_type(p7.get(), NID_pkcs7_encrypted));
-    EXPECT_FALSE(PKCS7_dataInit(p7.get(), bio.get()));
-    EXPECT_FALSE(PKCS7_dataFinal(p7.get(), bio.get()));
+  // NID_pkcs7_encrypted not supported, not needed by ruby
+  p7.reset(PKCS7_new());
+  ASSERT_TRUE(p7);
+  ASSERT_TRUE(PKCS7_set_type(p7.get(), NID_pkcs7_encrypted));
+  EXPECT_FALSE(PKCS7_dataInit(p7.get(), bio.get()));
+  EXPECT_FALSE(PKCS7_dataFinal(p7.get(), bio.get()));
 }
 
 TEST(PKCS7Test, RubyRepro) {
+  bssl::UniquePtr<PKCS7> p7;
   const uint8_t kRubyTestEnveloped[] = {
-    0x30, 0x82, 0x03, 0x6B, 0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01,
-    0x07, 0x03, 0xA0, 0x82, 0x03, 0x5C, 0x30, 0x82, 0x03, 0x58, 0x02, 0x01, 0x00,
-    0x31, 0x82, 0x01, 0x10, 0x30, 0x82, 0x01, 0x0C, 0x02, 0x01, 0x00, 0x30, 0x75,
-    0x30, 0x70, 0x31, 0x10, 0x30, 0x0E, 0x06, 0x03, 0x55, 0x04, 0x0A, 0x0C, 0x07,
-    0x65, 0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65, 0x31, 0x17, 0x30, 0x15, 0x06, 0x03,
-    0x55, 0x04, 0x03, 0x0C, 0x0E, 0x54, 0x41, 0x52, 0x4D, 0x41, 0x43, 0x20, 0x52,
-    0x4F, 0x4F, 0x54, 0x20, 0x43, 0x41, 0x31, 0x22, 0x30, 0x20, 0x06, 0x09, 0x2A,
-    0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x09, 0x01, 0x16, 0x13, 0x73, 0x6F, 0x6D,
-    0x65, 0x6F, 0x6E, 0x65, 0x40, 0x65, 0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65, 0x2E,
-    0x6F, 0x72, 0x67, 0x31, 0x0B, 0x30, 0x09, 0x06, 0x03, 0x55, 0x04, 0x06, 0x13,
-    0x02, 0x55, 0x53, 0x31, 0x12, 0x30, 0x10, 0x06, 0x03, 0x55, 0x04, 0x07, 0x0C,
-    0x09, 0x54, 0x6F, 0x77, 0x6E, 0x20, 0x48, 0x61, 0x6C, 0x6C, 0x02, 0x01, 0x66,
-    0x30, 0x0D, 0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01,
-    0x05, 0x00, 0x04, 0x81, 0x80, 0x6C, 0xA5, 0x75, 0xEC, 0x7B, 0xC6, 0x61, 0x1B,
-    0x51, 0x44, 0x13, 0x73, 0xD5, 0x02, 0xE9, 0x5B, 0xBE, 0xB7, 0x51, 0xE7, 0x61,
-    0x56, 0x3E, 0x4A, 0x5E, 0x2E, 0xF4, 0xA3, 0x80, 0x49, 0x18, 0xCD, 0x38, 0x94,
-    0x8B, 0x40, 0x82, 0xDE, 0x9A, 0x14, 0x2F, 0x52, 0xAE, 0xE6, 0x63, 0xA5, 0x6A,
-    0xF5, 0x80, 0x26, 0x0A, 0x09, 0xA4, 0x52, 0x02, 0x0D, 0xBB, 0xDC, 0x37, 0x86,
-    0x4D, 0x0C, 0x2C, 0x0E, 0x86, 0x7C, 0xE8, 0x23, 0xD7, 0xCC, 0x1A, 0x69, 0xB5,
-    0x82, 0xF3, 0xD0, 0xCB, 0x5E, 0x41, 0x76, 0x18, 0x59, 0x46, 0x8F, 0x65, 0x3F,
-    0xB1, 0x9A, 0xFC, 0x78, 0x36, 0x00, 0xF2, 0x93, 0xD3, 0xFD, 0x32, 0x84, 0xFB,
-    0x26, 0x27, 0xEC, 0x3E, 0xBB, 0x57, 0xBB, 0x3A, 0x82, 0x44, 0x55, 0xE1, 0x19,
-    0xDB, 0xBC, 0x77, 0xFA, 0xEE, 0xF8, 0xE5, 0xB1, 0x84, 0x72, 0xEF, 0x28, 0x7F,
-    0x9B, 0x61, 0xE9, 0x30, 0x82, 0x02, 0x3D, 0x06, 0x09, 0x2A, 0x86, 0x48, 0x86,
-    0xF7, 0x0D, 0x01, 0x07, 0x01, 0x30, 0x14, 0x06, 0x08, 0x2A, 0x86, 0x48, 0x86,
-    0xF7, 0x0D, 0x03, 0x07, 0x04, 0x08, 0x13, 0x6C, 0xD9, 0x4E, 0x66, 0x32, 0xC7,
-    0x7F, 0x80, 0x82, 0x02, 0x18, 0x53, 0xA7, 0x2E, 0xAF, 0xC4, 0x01, 0xCF, 0x4D,
-    0xBF, 0xE1, 0xE3, 0x29, 0x1D, 0xD9, 0x54, 0xF4, 0x89, 0x32, 0xAD, 0x13, 0x22,
-    0x68, 0xC6, 0x7F, 0x93, 0x2F, 0x73, 0x79, 0xC3, 0x80, 0x8E, 0x7B, 0xD8, 0x77,
-    0x68, 0xD9, 0xA9, 0x2E, 0xD1, 0x85, 0xCC, 0xE9, 0x68, 0xD2, 0x5A, 0x4A, 0x58,
-    0xB7, 0x1A, 0x60, 0xEC, 0x2A, 0xB1, 0x7E, 0x5E, 0xA1, 0x3D, 0x27, 0x9F, 0x2C,
-    0xF5, 0x27, 0x06, 0xA9, 0x48, 0xA0, 0xCD, 0xAA, 0x6E, 0xB1, 0x3B, 0x31, 0x22,
-    0x84, 0x54, 0x3E, 0xBE, 0xD9, 0xB5, 0xBD, 0x1A, 0xA6, 0x0F, 0x15, 0x58, 0x38,
-    0xA9, 0x02, 0xCB, 0xB0, 0xEC, 0x67, 0xC4, 0x92, 0x0C, 0x7C, 0xEB, 0xCB, 0x15,
-    0xF7, 0x7B, 0x82, 0xE2, 0xFE, 0x88, 0xB1, 0xF8, 0xDB, 0x85, 0xDF, 0x89, 0x45,
-    0x31, 0x69, 0xFF, 0x04, 0x75, 0x91, 0x38, 0xBB, 0x62, 0x04, 0x97, 0x84, 0x44,
-    0xBE, 0x44, 0xB5, 0x16, 0x81, 0x06, 0xC3, 0x20, 0x38, 0x04, 0x41, 0x8C, 0x49,
-    0xE5, 0x4F, 0x79, 0xD4, 0x02, 0x6D, 0x9D, 0x2A, 0x63, 0xB3, 0xDC, 0xDA, 0xD9,
-    0x99, 0x13, 0x75, 0xDF, 0x11, 0x48, 0x48, 0xB3, 0x24, 0xAD, 0x1B, 0x43, 0x5B,
-    0xEA, 0x2E, 0x80, 0x29, 0xC0, 0x05, 0x60, 0x66, 0xA9, 0x6E, 0x01, 0x3A, 0x90,
-    0x00, 0x74, 0x83, 0x0B, 0x18, 0x70, 0x79, 0x56, 0x30, 0xEB, 0xEC, 0xBD, 0xD0,
-    0x1F, 0x71, 0x3A, 0xBA, 0x8F, 0x0B, 0x47, 0x94, 0xED, 0x6C, 0xEB, 0xCA, 0xAD,
-    0xBE, 0x45, 0xAA, 0xB9, 0x34, 0x3D, 0x96, 0x95, 0xFE, 0x7F, 0x37, 0x5D, 0x51,
-    0x43, 0x71, 0x10, 0x74, 0xAA, 0xBF, 0x97, 0x94, 0xDE, 0x8A, 0x3A, 0x7D, 0x3D,
-    0xD5, 0x8F, 0x96, 0x45, 0x21, 0x59, 0x5A, 0x03, 0x94, 0xE1, 0x64, 0xCA, 0xC8,
-    0xE4, 0xF8, 0x11, 0x3E, 0xEC, 0x09, 0x33, 0x81, 0x8B, 0xF3, 0xF5, 0x4B, 0xC1,
-    0x8E, 0x66, 0x6C, 0x32, 0xC5, 0xAA, 0x7F, 0xE2, 0xAC, 0x67, 0x84, 0xBC, 0xFF,
-    0x7D, 0x27, 0x74, 0xBC, 0xEE, 0x8A, 0xE7, 0x2C, 0xBB, 0xA7, 0x8E, 0x9C, 0x52,
-    0xCB, 0x5F, 0xC0, 0xCA, 0x67, 0x15, 0x7A, 0x9D, 0x87, 0xDF, 0x64, 0xE3, 0xF3,
-    0x65, 0x92, 0xFC, 0x84, 0x50, 0x5C, 0x13, 0xB3, 0xCF, 0x81, 0x27, 0x41, 0x12,
-    0x46, 0xB3, 0x32, 0xB1, 0x01, 0x5E, 0xAD, 0x63, 0xE6, 0x63, 0x7B, 0x7B, 0x16,
-    0xC9, 0x34, 0xE0, 0x39, 0xB8, 0x65, 0xB2, 0x24, 0xD0, 0x4C, 0x38, 0x27, 0xBE,
-    0xD4, 0x96, 0xF1, 0x1B, 0xD5, 0x1E, 0xA2, 0xAB, 0xC2, 0x09, 0x31, 0xC4, 0x4B,
-    0x11, 0x1E, 0x0E, 0xEE, 0xF1, 0x47, 0x73, 0x67, 0x48, 0xE0, 0xF8, 0xEE, 0x7E,
-    0xDC, 0x5F, 0x01, 0xEB, 0xF3, 0x56, 0x33, 0x2B, 0x6C, 0xD0, 0xE6, 0x85, 0xA9,
-    0x3F, 0x70, 0xBC, 0x8F, 0x32, 0x3B, 0xB5, 0x48, 0xCB, 0x77, 0x54, 0xB4, 0x67,
-    0x73, 0xEC, 0x77, 0x5E, 0xE8, 0x68, 0x29, 0xFE, 0x24, 0xE7, 0xD4, 0xB6, 0xE0,
-    0x74, 0x9D, 0xCD, 0xF0, 0x7C, 0xF1, 0x7F, 0x58, 0xFA, 0x34, 0xC5, 0x94, 0x28,
-    0x75, 0x6C, 0x69, 0xDB, 0xF0, 0xA5, 0x12, 0x5B, 0x51, 0xEA, 0xAA, 0xF5, 0xCD,
-    0xFE, 0x42, 0xEC, 0x6C, 0x26, 0x2F, 0x30, 0x59, 0xE9, 0xB1, 0xC5, 0x00, 0x84,
-    0xFA, 0xD3, 0xF2, 0x73, 0x57, 0x4F, 0xF9, 0xE8, 0xF9, 0xFC, 0xCE, 0xDB, 0x11,
-    0x16, 0xD2, 0x38, 0x73, 0x06, 0x81, 0x7D, 0x37, 0xEF, 0x9F, 0x08, 0xBC, 0xFE,
-    0xC0, 0xFD, 0xFC, 0xB6, 0x0E, 0x31, 0x8F, 0xBF, 0x6F, 0xA5, 0x03, 0x09, 0x44,
-    0x91, 0xED, 0x14, 0xCD, 0xED, 0x77, 0xEB, 0xB4, 0x0A, 0x83, 0x13, 0x34, 0x9D,
-    0xCD, 0xD2, 0x64, 0x39, 0x69, 0xB5, 0x8E, 0xF3, 0x3C, 0x82, 0x42, 0xE6, 0xC6,
-    0x96, 0x5D, 0xBF, 0x11, 0xB7, 0x66, 0xF0, 0xD8, 0x9C, 0x44, 0x04, 0xE4, 0xDA,
-    0xBE, 0xBA, 0x7E, 0x67, 0x02, 0x7C, 0xB5, 0xC1, 0xFD, 0xEB, 0x5A, 0x27, 0xAB,
-    0xC4, 0xE6, 0x7B, 0x62, 0x02, 0x68, 0x2C, 0xE4,
+      0x30, 0x82, 0x03, 0x6B, 0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D,
+      0x01, 0x07, 0x03, 0xA0, 0x82, 0x03, 0x5C, 0x30, 0x82, 0x03, 0x58, 0x02,
+      0x01, 0x00, 0x31, 0x82, 0x01, 0x10, 0x30, 0x82, 0x01, 0x0C, 0x02, 0x01,
+      0x00, 0x30, 0x75, 0x30, 0x70, 0x31, 0x10, 0x30, 0x0E, 0x06, 0x03, 0x55,
+      0x04, 0x0A, 0x0C, 0x07, 0x65, 0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65, 0x31,
+      0x17, 0x30, 0x15, 0x06, 0x03, 0x55, 0x04, 0x03, 0x0C, 0x0E, 0x54, 0x41,
+      0x52, 0x4D, 0x41, 0x43, 0x20, 0x52, 0x4F, 0x4F, 0x54, 0x20, 0x43, 0x41,
+      0x31, 0x22, 0x30, 0x20, 0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D,
+      0x01, 0x09, 0x01, 0x16, 0x13, 0x73, 0x6F, 0x6D, 0x65, 0x6F, 0x6E, 0x65,
+      0x40, 0x65, 0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65, 0x2E, 0x6F, 0x72, 0x67,
+      0x31, 0x0B, 0x30, 0x09, 0x06, 0x03, 0x55, 0x04, 0x06, 0x13, 0x02, 0x55,
+      0x53, 0x31, 0x12, 0x30, 0x10, 0x06, 0x03, 0x55, 0x04, 0x07, 0x0C, 0x09,
+      0x54, 0x6F, 0x77, 0x6E, 0x20, 0x48, 0x61, 0x6C, 0x6C, 0x02, 0x01, 0x66,
+      0x30, 0x0D, 0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01,
+      0x01, 0x05, 0x00, 0x04, 0x81, 0x80, 0x6C, 0xA5, 0x75, 0xEC, 0x7B, 0xC6,
+      0x61, 0x1B, 0x51, 0x44, 0x13, 0x73, 0xD5, 0x02, 0xE9, 0x5B, 0xBE, 0xB7,
+      0x51, 0xE7, 0x61, 0x56, 0x3E, 0x4A, 0x5E, 0x2E, 0xF4, 0xA3, 0x80, 0x49,
+      0x18, 0xCD, 0x38, 0x94, 0x8B, 0x40, 0x82, 0xDE, 0x9A, 0x14, 0x2F, 0x52,
+      0xAE, 0xE6, 0x63, 0xA5, 0x6A, 0xF5, 0x80, 0x26, 0x0A, 0x09, 0xA4, 0x52,
+      0x02, 0x0D, 0xBB, 0xDC, 0x37, 0x86, 0x4D, 0x0C, 0x2C, 0x0E, 0x86, 0x7C,
+      0xE8, 0x23, 0xD7, 0xCC, 0x1A, 0x69, 0xB5, 0x82, 0xF3, 0xD0, 0xCB, 0x5E,
+      0x41, 0x76, 0x18, 0x59, 0x46, 0x8F, 0x65, 0x3F, 0xB1, 0x9A, 0xFC, 0x78,
+      0x36, 0x00, 0xF2, 0x93, 0xD3, 0xFD, 0x32, 0x84, 0xFB, 0x26, 0x27, 0xEC,
+      0x3E, 0xBB, 0x57, 0xBB, 0x3A, 0x82, 0x44, 0x55, 0xE1, 0x19, 0xDB, 0xBC,
+      0x77, 0xFA, 0xEE, 0xF8, 0xE5, 0xB1, 0x84, 0x72, 0xEF, 0x28, 0x7F, 0x9B,
+      0x61, 0xE9, 0x30, 0x82, 0x02, 0x3D, 0x06, 0x09, 0x2A, 0x86, 0x48, 0x86,
+      0xF7, 0x0D, 0x01, 0x07, 0x01, 0x30, 0x14, 0x06, 0x08, 0x2A, 0x86, 0x48,
+      0x86, 0xF7, 0x0D, 0x03, 0x07, 0x04, 0x08, 0x13, 0x6C, 0xD9, 0x4E, 0x66,
+      0x32, 0xC7, 0x7F, 0x80, 0x82, 0x02, 0x18, 0x53, 0xA7, 0x2E, 0xAF, 0xC4,
+      0x01, 0xCF, 0x4D, 0xBF, 0xE1, 0xE3, 0x29, 0x1D, 0xD9, 0x54, 0xF4, 0x89,
+      0x32, 0xAD, 0x13, 0x22, 0x68, 0xC6, 0x7F, 0x93, 0x2F, 0x73, 0x79, 0xC3,
+      0x80, 0x8E, 0x7B, 0xD8, 0x77, 0x68, 0xD9, 0xA9, 0x2E, 0xD1, 0x85, 0xCC,
+      0xE9, 0x68, 0xD2, 0x5A, 0x4A, 0x58, 0xB7, 0x1A, 0x60, 0xEC, 0x2A, 0xB1,
+      0x7E, 0x5E, 0xA1, 0x3D, 0x27, 0x9F, 0x2C, 0xF5, 0x27, 0x06, 0xA9, 0x48,
+      0xA0, 0xCD, 0xAA, 0x6E, 0xB1, 0x3B, 0x31, 0x22, 0x84, 0x54, 0x3E, 0xBE,
+      0xD9, 0xB5, 0xBD, 0x1A, 0xA6, 0x0F, 0x15, 0x58, 0x38, 0xA9, 0x02, 0xCB,
+      0xB0, 0xEC, 0x67, 0xC4, 0x92, 0x0C, 0x7C, 0xEB, 0xCB, 0x15, 0xF7, 0x7B,
+      0x82, 0xE2, 0xFE, 0x88, 0xB1, 0xF8, 0xDB, 0x85, 0xDF, 0x89, 0x45, 0x31,
+      0x69, 0xFF, 0x04, 0x75, 0x91, 0x38, 0xBB, 0x62, 0x04, 0x97, 0x84, 0x44,
+      0xBE, 0x44, 0xB5, 0x16, 0x81, 0x06, 0xC3, 0x20, 0x38, 0x04, 0x41, 0x8C,
+      0x49, 0xE5, 0x4F, 0x79, 0xD4, 0x02, 0x6D, 0x9D, 0x2A, 0x63, 0xB3, 0xDC,
+      0xDA, 0xD9, 0x99, 0x13, 0x75, 0xDF, 0x11, 0x48, 0x48, 0xB3, 0x24, 0xAD,
+      0x1B, 0x43, 0x5B, 0xEA, 0x2E, 0x80, 0x29, 0xC0, 0x05, 0x60, 0x66, 0xA9,
+      0x6E, 0x01, 0x3A, 0x90, 0x00, 0x74, 0x83, 0x0B, 0x18, 0x70, 0x79, 0x56,
+      0x30, 0xEB, 0xEC, 0xBD, 0xD0, 0x1F, 0x71, 0x3A, 0xBA, 0x8F, 0x0B, 0x47,
+      0x94, 0xED, 0x6C, 0xEB, 0xCA, 0xAD, 0xBE, 0x45, 0xAA, 0xB9, 0x34, 0x3D,
+      0x96, 0x95, 0xFE, 0x7F, 0x37, 0x5D, 0x51, 0x43, 0x71, 0x10, 0x74, 0xAA,
+      0xBF, 0x97, 0x94, 0xDE, 0x8A, 0x3A, 0x7D, 0x3D, 0xD5, 0x8F, 0x96, 0x45,
+      0x21, 0x59, 0x5A, 0x03, 0x94, 0xE1, 0x64, 0xCA, 0xC8, 0xE4, 0xF8, 0x11,
+      0x3E, 0xEC, 0x09, 0x33, 0x81, 0x8B, 0xF3, 0xF5, 0x4B, 0xC1, 0x8E, 0x66,
+      0x6C, 0x32, 0xC5, 0xAA, 0x7F, 0xE2, 0xAC, 0x67, 0x84, 0xBC, 0xFF, 0x7D,
+      0x27, 0x74, 0xBC, 0xEE, 0x8A, 0xE7, 0x2C, 0xBB, 0xA7, 0x8E, 0x9C, 0x52,
+      0xCB, 0x5F, 0xC0, 0xCA, 0x67, 0x15, 0x7A, 0x9D, 0x87, 0xDF, 0x64, 0xE3,
+      0xF3, 0x65, 0x92, 0xFC, 0x84, 0x50, 0x5C, 0x13, 0xB3, 0xCF, 0x81, 0x27,
+      0x41, 0x12, 0x46, 0xB3, 0x32, 0xB1, 0x01, 0x5E, 0xAD, 0x63, 0xE6, 0x63,
+      0x7B, 0x7B, 0x16, 0xC9, 0x34, 0xE0, 0x39, 0xB8, 0x65, 0xB2, 0x24, 0xD0,
+      0x4C, 0x38, 0x27, 0xBE, 0xD4, 0x96, 0xF1, 0x1B, 0xD5, 0x1E, 0xA2, 0xAB,
+      0xC2, 0x09, 0x31, 0xC4, 0x4B, 0x11, 0x1E, 0x0E, 0xEE, 0xF1, 0x47, 0x73,
+      0x67, 0x48, 0xE0, 0xF8, 0xEE, 0x7E, 0xDC, 0x5F, 0x01, 0xEB, 0xF3, 0x56,
+      0x33, 0x2B, 0x6C, 0xD0, 0xE6, 0x85, 0xA9, 0x3F, 0x70, 0xBC, 0x8F, 0x32,
+      0x3B, 0xB5, 0x48, 0xCB, 0x77, 0x54, 0xB4, 0x67, 0x73, 0xEC, 0x77, 0x5E,
+      0xE8, 0x68, 0x29, 0xFE, 0x24, 0xE7, 0xD4, 0xB6, 0xE0, 0x74, 0x9D, 0xCD,
+      0xF0, 0x7C, 0xF1, 0x7F, 0x58, 0xFA, 0x34, 0xC5, 0x94, 0x28, 0x75, 0x6C,
+      0x69, 0xDB, 0xF0, 0xA5, 0x12, 0x5B, 0x51, 0xEA, 0xAA, 0xF5, 0xCD, 0xFE,
+      0x42, 0xEC, 0x6C, 0x26, 0x2F, 0x30, 0x59, 0xE9, 0xB1, 0xC5, 0x00, 0x84,
+      0xFA, 0xD3, 0xF2, 0x73, 0x57, 0x4F, 0xF9, 0xE8, 0xF9, 0xFC, 0xCE, 0xDB,
+      0x11, 0x16, 0xD2, 0x38, 0x73, 0x06, 0x81, 0x7D, 0x37, 0xEF, 0x9F, 0x08,
+      0xBC, 0xFE, 0xC0, 0xFD, 0xFC, 0xB6, 0x0E, 0x31, 0x8F, 0xBF, 0x6F, 0xA5,
+      0x03, 0x09, 0x44, 0x91, 0xED, 0x14, 0xCD, 0xED, 0x77, 0xEB, 0xB4, 0x0A,
+      0x83, 0x13, 0x34, 0x9D, 0xCD, 0xD2, 0x64, 0x39, 0x69, 0xB5, 0x8E, 0xF3,
+      0x3C, 0x82, 0x42, 0xE6, 0xC6, 0x96, 0x5D, 0xBF, 0x11, 0xB7, 0x66, 0xF0,
+      0xD8, 0x9C, 0x44, 0x04, 0xE4, 0xDA, 0xBE, 0xBA, 0x7E, 0x67, 0x02, 0x7C,
+      0xB5, 0xC1, 0xFD, 0xEB, 0x5A, 0x27, 0xAB, 0xC4, 0xE6, 0x7B, 0x62, 0x02,
+      0x68, 0x2C, 0xE4,
   };
   const unsigned char *ptr = &kRubyTestEnveloped[0];
-  ASSERT_TRUE(d2i_PKCS7(nullptr, &ptr, sizeof(kRubyTestEnveloped)));
+  p7.reset(d2i_PKCS7(nullptr, &ptr, sizeof(kRubyTestEnveloped)));
+  ASSERT_TRUE(p7);
 
-  const uint8_t kRubySerialized[] = {48, 128, 6, 9, 42, 134, 72, 134, 247, 13, 1, 7, 3, 160, 128, 48, 128, 2, 1, 0, 49, 130, 1, 16, 48, 130, 1, 12, 2, 1, 0, 48, 117, 48, 112, 49, 16, 48, 14, 6, 3, 85, 4, 10, 12, 7, 101, 120, 97, 109, 112, 108, 101, 49, 23, 48, 21, 6, 3, 85, 4, 3, 12, 14, 84, 65, 82, 77, 65, 67, 32, 82, 79, 79, 84, 32, 67, 65, 49, 34, 48, 32, 6, 9, 42, 134, 72, 134, 247, 13, 1, 9, 1, 22, 19, 115, 111, 109, 101, 111, 110, 101, 64, 101, 120, 97, 109, 112, 108, 101, 46, 111, 114, 103, 49, 11, 48, 9, 6, 3, 85, 4, 6, 19, 2, 85, 83, 49, 18, 48, 16, 6, 3, 85, 4, 7, 12, 9, 84, 111, 119, 110, 32, 72, 97, 108, 108, 2, 1, 102, 48, 13, 6, 9, 42, 134, 72, 134, 247, 13, 1, 1, 1, 5, 0, 4, 129, 128, 108, 165, 117, 236, 123, 198, 97, 27, 81, 68, 19, 115, 213, 2, 233, 91, 190, 183, 81, 231, 97, 86, 62, 74, 94, 46, 244, 163, 128, 73, 24, 205, 56, 148, 139, 64, 130, 222, 154, 20, 47, 82, 174, 230, 99, 165, 106, 245, 128, 38, 10, 9, 164, 82, 2, 13, 187, 220, 55, 134, 77, 12, 44, 14, 134, 124, 232, 35, 215, 204, 26, 105, 181, 130, 243, 208, 203, 94, 65, 118, 24, 89, 70, 143, 101, 63, 177, 154, 252, 120, 54, 0, 242, 147, 211, 253, 50, 132, 251, 38, 39, 236, 62, 187, 87, 187, 58, 130, 68, 85, 225, 25, 219, 188, 119, 250, 238, 248, 229, 177, 132, 114, 239, 40, 127, 155, 97, 233, 48, 128, 6, 9, 42, 134, 72, 134, 247, 13, 1, 7, 1, 48, 20, 6, 8, 42, 134, 72, 134, 247, 13, 3, 7, 4, 8, 19, 108, 217, 78, 102, 50, 199, 127, 160, 128, 4, 130, 2, 16, 83, 167, 46, 175, 196, 1, 207, 77, 191, 225, 227, 41, 29, 217, 84, 244, 137, 50, 173, 19, 34, 104, 198, 127, 147, 47, 115, 121, 195, 128, 142, 123, 216, 119, 104, 217, 169, 46, 209, 133, 204, 233, 104, 210, 90, 74, 88, 183, 26, 96, 236, 42, 177, 126, 94, 161, 61, 39, 159, 44, 245, 39, 6, 169, 72, 160, 205, 170, 110, 177, 59, 49, 34, 132, 84, 62, 190, 217, 181, 189, 26, 166, 15, 21, 88, 56, 169, 2, 203, 176, 236, 103, 196, 146, 12, 124, 235, 203, 21, 247, 123, 130, 226, 254, 136, 177, 248, 219, 133, 223, 137, 69, 49, 105, 255, 4, 117, 145, 56, 187, 98, 4, 151, 132, 68, 190, 68, 181, 22, 129, 6, 195, 32, 56, 4, 65, 140, 73, 229, 79, 121, 212, 2, 109, 157, 42, 99, 179, 220, 218, 217, 153, 19, 117, 223, 17, 72, 72, 179, 36, 173, 27, 67, 91, 234, 46, 128, 41, 192, 5, 96, 102, 169, 110, 1, 58, 144, 0, 116, 131, 11, 24, 112, 121, 86, 48, 235, 236, 189, 208, 31, 113, 58, 186, 143, 11, 71, 148, 237, 108, 235, 202, 173, 190, 69, 170, 185, 52, 61, 150, 149, 254, 127, 55, 93, 81, 67, 113, 16, 116, 170, 191, 151, 148, 222, 138, 58, 125, 61, 213, 143, 150, 69, 33, 89, 90, 3, 148, 225, 100, 202, 200, 228, 248, 17, 62, 236, 9, 51, 129, 139, 243, 245, 75, 193, 142, 102, 108, 50, 197, 170, 127, 226, 172, 103, 132, 188, 255, 125, 39, 116, 188, 238, 138, 231, 44, 187, 167, 142, 156, 82, 203, 95, 192, 202, 103, 21, 122, 157, 135, 223, 100, 227, 243, 101, 146, 252, 132, 80, 92, 19, 179, 207, 129, 39, 65, 18, 70, 179, 50, 177, 1, 94, 173, 99, 230, 99, 123, 123, 22, 201, 52, 224, 57, 184, 101, 178, 36, 208, 76, 56, 39, 190, 212, 150, 241, 27, 213, 30, 162, 171, 194, 9, 49, 196, 75, 17, 30, 14, 238, 241, 71, 115, 103, 72, 224, 248, 238, 126, 220, 95, 1, 235, 243, 86, 51, 43, 108, 208, 230, 133, 169, 63, 112, 188, 143, 50, 59, 181, 72, 203, 119, 84, 180, 103, 115, 236, 119, 94, 232, 104, 41, 254, 36, 231, 212, 182, 224, 116, 157, 205, 240, 124, 241, 127, 88, 250, 52, 197, 148, 40, 117, 108, 105, 219, 240, 165, 18, 91, 81, 234, 170, 245, 205, 254, 66, 236, 108, 38, 47, 48, 89, 233, 177, 197, 0, 132, 250, 211, 242, 115, 87, 79, 249, 232, 249, 252, 206, 219, 17, 22, 210, 56, 115, 6, 129, 125, 55, 239, 159, 8, 188, 254, 192, 253, 252, 182, 14, 49, 143, 191, 111, 165, 3, 9, 68, 145, 237, 20, 205, 237, 119, 235, 180, 10, 131, 19, 52, 157, 205, 210, 100, 57, 105, 181, 142, 243, 60, 130, 66, 230, 198, 150, 93, 191, 17, 183, 102, 240, 216, 156, 68, 4, 228, 218, 190, 186, 126, 103, 2, 124, 181, 193, 253, 235, 90, 39, 171, 4, 8, 196, 230, 123, 98, 2, 104, 44, 228, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  const uint8_t kRubySerialized[] = {
+      48,  128, 6,   9,   42,  134, 72,  134, 247, 13,  1,   7,   3,   160, 128,
+      48,  128, 2,   1,   0,   49,  130, 1,   16,  48,  130, 1,   12,  2,   1,
+      0,   48,  117, 48,  112, 49,  16,  48,  14,  6,   3,   85,  4,   10,  12,
+      7,   101, 120, 97,  109, 112, 108, 101, 49,  23,  48,  21,  6,   3,   85,
+      4,   3,   12,  14,  84,  65,  82,  77,  65,  67,  32,  82,  79,  79,  84,
+      32,  67,  65,  49,  34,  48,  32,  6,   9,   42,  134, 72,  134, 247, 13,
+      1,   9,   1,   22,  19,  115, 111, 109, 101, 111, 110, 101, 64,  101, 120,
+      97,  109, 112, 108, 101, 46,  111, 114, 103, 49,  11,  48,  9,   6,   3,
+      85,  4,   6,   19,  2,   85,  83,  49,  18,  48,  16,  6,   3,   85,  4,
+      7,   12,  9,   84,  111, 119, 110, 32,  72,  97,  108, 108, 2,   1,   102,
+      48,  13,  6,   9,   42,  134, 72,  134, 247, 13,  1,   1,   1,   5,   0,
+      4,   129, 128, 108, 165, 117, 236, 123, 198, 97,  27,  81,  68,  19,  115,
+      213, 2,   233, 91,  190, 183, 81,  231, 97,  86,  62,  74,  94,  46,  244,
+      163, 128, 73,  24,  205, 56,  148, 139, 64,  130, 222, 154, 20,  47,  82,
+      174, 230, 99,  165, 106, 245, 128, 38,  10,  9,   164, 82,  2,   13,  187,
+      220, 55,  134, 77,  12,  44,  14,  134, 124, 232, 35,  215, 204, 26,  105,
+      181, 130, 243, 208, 203, 94,  65,  118, 24,  89,  70,  143, 101, 63,  177,
+      154, 252, 120, 54,  0,   242, 147, 211, 253, 50,  132, 251, 38,  39,  236,
+      62,  187, 87,  187, 58,  130, 68,  85,  225, 25,  219, 188, 119, 250, 238,
+      248, 229, 177, 132, 114, 239, 40,  127, 155, 97,  233, 48,  128, 6,   9,
+      42,  134, 72,  134, 247, 13,  1,   7,   1,   48,  20,  6,   8,   42,  134,
+      72,  134, 247, 13,  3,   7,   4,   8,   19,  108, 217, 78,  102, 50,  199,
+      127, 160, 128, 4,   130, 2,   16,  83,  167, 46,  175, 196, 1,   207, 77,
+      191, 225, 227, 41,  29,  217, 84,  244, 137, 50,  173, 19,  34,  104, 198,
+      127, 147, 47,  115, 121, 195, 128, 142, 123, 216, 119, 104, 217, 169, 46,
+      209, 133, 204, 233, 104, 210, 90,  74,  88,  183, 26,  96,  236, 42,  177,
+      126, 94,  161, 61,  39,  159, 44,  245, 39,  6,   169, 72,  160, 205, 170,
+      110, 177, 59,  49,  34,  132, 84,  62,  190, 217, 181, 189, 26,  166, 15,
+      21,  88,  56,  169, 2,   203, 176, 236, 103, 196, 146, 12,  124, 235, 203,
+      21,  247, 123, 130, 226, 254, 136, 177, 248, 219, 133, 223, 137, 69,  49,
+      105, 255, 4,   117, 145, 56,  187, 98,  4,   151, 132, 68,  190, 68,  181,
+      22,  129, 6,   195, 32,  56,  4,   65,  140, 73,  229, 79,  121, 212, 2,
+      109, 157, 42,  99,  179, 220, 218, 217, 153, 19,  117, 223, 17,  72,  72,
+      179, 36,  173, 27,  67,  91,  234, 46,  128, 41,  192, 5,   96,  102, 169,
+      110, 1,   58,  144, 0,   116, 131, 11,  24,  112, 121, 86,  48,  235, 236,
+      189, 208, 31,  113, 58,  186, 143, 11,  71,  148, 237, 108, 235, 202, 173,
+      190, 69,  170, 185, 52,  61,  150, 149, 254, 127, 55,  93,  81,  67,  113,
+      16,  116, 170, 191, 151, 148, 222, 138, 58,  125, 61,  213, 143, 150, 69,
+      33,  89,  90,  3,   148, 225, 100, 202, 200, 228, 248, 17,  62,  236, 9,
+      51,  129, 139, 243, 245, 75,  193, 142, 102, 108, 50,  197, 170, 127, 226,
+      172, 103, 132, 188, 255, 125, 39,  116, 188, 238, 138, 231, 44,  187, 167,
+      142, 156, 82,  203, 95,  192, 202, 103, 21,  122, 157, 135, 223, 100, 227,
+      243, 101, 146, 252, 132, 80,  92,  19,  179, 207, 129, 39,  65,  18,  70,
+      179, 50,  177, 1,   94,  173, 99,  230, 99,  123, 123, 22,  201, 52,  224,
+      57,  184, 101, 178, 36,  208, 76,  56,  39,  190, 212, 150, 241, 27,  213,
+      30,  162, 171, 194, 9,   49,  196, 75,  17,  30,  14,  238, 241, 71,  115,
+      103, 72,  224, 248, 238, 126, 220, 95,  1,   235, 243, 86,  51,  43,  108,
+      208, 230, 133, 169, 63,  112, 188, 143, 50,  59,  181, 72,  203, 119, 84,
+      180, 103, 115, 236, 119, 94,  232, 104, 41,  254, 36,  231, 212, 182, 224,
+      116, 157, 205, 240, 124, 241, 127, 88,  250, 52,  197, 148, 40,  117, 108,
+      105, 219, 240, 165, 18,  91,  81,  234, 170, 245, 205, 254, 66,  236, 108,
+      38,  47,  48,  89,  233, 177, 197, 0,   132, 250, 211, 242, 115, 87,  79,
+      249, 232, 249, 252, 206, 219, 17,  22,  210, 56,  115, 6,   129, 125, 55,
+      239, 159, 8,   188, 254, 192, 253, 252, 182, 14,  49,  143, 191, 111, 165,
+      3,   9,   68,  145, 237, 20,  205, 237, 119, 235, 180, 10,  131, 19,  52,
+      157, 205, 210, 100, 57,  105, 181, 142, 243, 60,  130, 66,  230, 198, 150,
+      93,  191, 17,  183, 102, 240, 216, 156, 68,  4,   228, 218, 190, 186, 126,
+      103, 2,   124, 181, 193, 253, 235, 90,  39,  171, 4,   8,   196, 230, 123,
+      98,  2,   104, 44,  228, 0,   0,   0,   0,   0,   0,   0,   0,   0,   0};
   ptr = &kRubySerialized[0];
-  ASSERT_TRUE(d2i_PKCS7(nullptr, &ptr, sizeof(kRubySerialized)));
+  p7.reset(d2i_PKCS7(nullptr, &ptr, sizeof(kRubySerialized)));
+  ASSERT_TRUE(p7);
 
   BIO *bio = BIO_new_mem_buf(kRubySerialized, sizeof(kRubySerialized));
-  // BIO_write(bio, kRubySerialized, sizeof(kRubySerialized));
-  // ASSERT_TRUE(BIO_flush(bio));
   EXPECT_EQ(sizeof(kRubySerialized), BIO_pending(bio));
   ASSERT_TRUE(d2i_PKCS7_bio(bio, nullptr));
 }
-
 
 TEST(PKCS7Test, TestEnveloped) {
   bssl::UniquePtr<PKCS7> p7;
@@ -1781,18 +1847,101 @@ TEST(PKCS7Test, TestEnveloped) {
   ASSERT_EQ(1U, sk_X509_num(certs.get()));
   rsa_x509.reset(sk_X509_value(certs.get(), 0));
   ASSERT_TRUE(X509_set_pubkey(rsa_x509.get(), rsa_pkey.get()));
+  X509_up_ref(rsa_x509.get());
 
   bio.reset(BIO_new_mem_buf(buf, sizeof(buf)));
-  p7.reset(PKCS7_encrypt(certs.get(), bio.get(), EVP_aes_128_cbc(), /*flags*/0));
-  certs.release();  // |p7| takes ownership
+  p7.reset(
+      PKCS7_encrypt(certs.get(), bio.get(), EVP_aes_128_cbc(), /*flags*/ 0));
   EXPECT_TRUE(p7);
   EXPECT_TRUE(PKCS7_type_is_enveloped(p7.get()));
   bio.reset(BIO_new(BIO_s_mem()));
-  EXPECT_TRUE(PKCS7_decrypt(p7.get(), rsa_pkey.get(), rsa_x509.get(), bio.get(), /*flags*/0));
+  EXPECT_TRUE(PKCS7_decrypt(p7.get(), rsa_pkey.get(), rsa_x509.get(), bio.get(),
+                            /*flags*/ 0));
   EXPECT_EQ(sizeof(decrypted), BIO_pending(bio.get()));
   OPENSSL_cleanse(decrypted, sizeof(decrypted));
-  ASSERT_EQ((int)sizeof(decrypted), BIO_read(bio.get(), decrypted, sizeof(decrypted)));
+  ASSERT_EQ((int)sizeof(decrypted),
+            BIO_read(bio.get(), decrypted, sizeof(decrypted)));
   EXPECT_EQ(Bytes(buf, sizeof(buf)), Bytes(decrypted, sizeof(decrypted)));
+
+  // no certs provided for decryption
+  bio.reset(BIO_new_mem_buf(buf, sizeof(buf)));
+  p7.reset(
+      PKCS7_encrypt(certs.get(), bio.get(), EVP_aes_128_cbc(), /*flags*/ 0));
+  EXPECT_TRUE(p7);
+  EXPECT_TRUE(PKCS7_type_is_enveloped(p7.get()));
+  bio.reset(BIO_new(BIO_s_mem()));
+  EXPECT_TRUE(PKCS7_decrypt(p7.get(), rsa_pkey.get(), /*certs*/ nullptr,
+                            bio.get(),
+                            /*flags*/ 0));
+  EXPECT_EQ(sizeof(decrypted), BIO_pending(bio.get()));
+  OPENSSL_cleanse(decrypted, sizeof(decrypted));
+  ASSERT_EQ((int)sizeof(decrypted),
+            BIO_read(bio.get(), decrypted, sizeof(decrypted)));
+  EXPECT_EQ(Bytes(buf, sizeof(buf)), Bytes(decrypted, sizeof(decrypted)));
+
+  // empty plaintext
+  bio.reset(BIO_new(BIO_s_mem()));
+  ASSERT_TRUE(BIO_set_mem_eof_return(bio.get(), 0));
+  p7.reset(
+      PKCS7_encrypt(certs.get(), bio.get(), EVP_aes_128_cbc(), /*flags*/ 0));
+  EXPECT_TRUE(p7);
+  EXPECT_TRUE(PKCS7_type_is_enveloped(p7.get()));
+  bio.reset(BIO_new(BIO_s_mem()));
+  ASSERT_TRUE(BIO_set_mem_eof_return(bio.get(), 0));
+  EXPECT_TRUE(PKCS7_decrypt(p7.get(), rsa_pkey.get(), rsa_x509.get(), bio.get(),
+                            /*flags*/ 0));
+  EXPECT_EQ(0UL, BIO_pending(bio.get()));
+  EXPECT_EQ(0, BIO_read(bio.get(), decrypted, sizeof(decrypted)));
+  EXPECT_FALSE(BIO_should_retry(bio.get()));
+
+  // test "MMA" decrypt with mismatched cert pub key/pkey private key and block
+  // cipher used for content encryption
+  bio.reset(BIO_new_mem_buf(buf, sizeof(buf)));
+  p7.reset(
+      PKCS7_encrypt(certs.get(), bio.get(), EVP_aes_128_cbc(), /*flags*/ 0));
+  EXPECT_TRUE(p7);
+  EXPECT_TRUE(PKCS7_type_is_enveloped(p7.get()));
+  bio.reset(BIO_new(BIO_s_mem()));
+  // set newm RSA key, cert pub key and PKEY private key now mismatch
+  rsa.reset(RSA_new());
+  ASSERT_TRUE(RSA_generate_key_fips(rsa.get(), 2048, nullptr));
+  ASSERT_TRUE(EVP_PKEY_set1_RSA(rsa_pkey.get(), rsa.get()));
+  // attempt decryption with the new, mismatched keypair. content key decryption
+  // should "succeed" and produce random, useless content decryption key.
+  // The content is "decrypted" with the useless key, so nonsense gets written
+  // to the output |bio|. The cipher ends up in an unhealthy state due to bad
+  // padding (what should be the final pad block is now just random bytes), so
+  // the overall |PKCS7_decrypt| operation fails.
+  EXPECT_FALSE(PKCS7_decrypt(p7.get(), rsa_pkey.get(), /*certs*/ nullptr,
+                             bio.get(),
+                             /*flags*/ 0));
+  EXPECT_EQ(sizeof(decrypted), BIO_pending(bio.get()));
+  OPENSSL_cleanse(decrypted, sizeof(decrypted));
+  ASSERT_EQ((int)sizeof(decrypted),
+            BIO_read(bio.get(), decrypted, sizeof(decrypted)));
+  EXPECT_NE(Bytes(buf, sizeof(buf)), Bytes(decrypted, sizeof(decrypted)));
+  EXPECT_EQ(CIPHER_R_BAD_DECRYPT, ERR_GET_REASON(ERR_peek_error()));
+
+  // test "MMA" decrypt as above, but with stream cipher. stream cipher has no
+  // padding, so content encryption should "succeed" but return nonsense because
+  // the content decryption key is just randomly generated bytes.
+  bio.reset(BIO_new_mem_buf(buf, sizeof(buf)));
+  p7.reset(
+      PKCS7_encrypt(certs.get(), bio.get(), EVP_aes_128_ctr(), /*flags*/ 0));
+  EXPECT_TRUE(p7);
+  EXPECT_TRUE(PKCS7_type_is_enveloped(p7.get()));
+  bio.reset(BIO_new(BIO_s_mem()));
+  // content decryption "succeeds"...
+  EXPECT_TRUE(PKCS7_decrypt(p7.get(), rsa_pkey.get(), /*certs*/ nullptr,
+                            bio.get(),
+                            /*flags*/ 0));
+  EXPECT_EQ(sizeof(decrypted), BIO_pending(bio.get()));
+  OPENSSL_cleanse(decrypted, sizeof(decrypted));
+  ASSERT_EQ((int)sizeof(decrypted),
+            BIO_read(bio.get(), decrypted, sizeof(decrypted)));
+  // ...but it produces pseudo-random nonsense
+  EXPECT_NE(Bytes(buf, sizeof(buf)), Bytes(decrypted, sizeof(decrypted)));
+  EXPECT_FALSE(ERR_GET_REASON(ERR_peek_error()));
 }
 
 TEST(PKCS7Test, TestSigned) {
@@ -1828,7 +1977,7 @@ TEST(PKCS7Test, TestSigned) {
   not_after.reset(ASN1_TIME_set_posix(nullptr, INT64_C(253402300799)));
 
   bssl::UniquePtr<X509> root =
-    MakeTestCert("Root", "Root", root_pkey.get(), /*is_ca=*/true);
+      MakeTestCert("Root", "Root", root_pkey.get(), /*is_ca=*/true);
   ASSERT_TRUE(root);
   ASSERT_TRUE(X509_set_notBefore(root.get(), not_before.get()));
   ASSERT_TRUE(X509_set_notAfter(root.get(), not_after.get()));
@@ -1842,9 +1991,12 @@ TEST(PKCS7Test, TestSigned) {
   ASSERT_TRUE(X509_set_notAfter(leaf.get(), not_after.get()));
   // Root signs leaf
   ASSERT_TRUE(X509_sign(leaf.get(), root_pkey.get(), EVP_sha256()));
+  X509_up_ref(leaf.get());
+  X509_up_ref(leaf.get());
 
   bio_in.reset(BIO_new_mem_buf(buf, sizeof(buf)));
-  p7.reset(PKCS7_sign(X509_dup(leaf.get()), leaf_pkey.get(), nullptr, bio_in.get(), /*flags*/0));
+  p7.reset(PKCS7_sign(leaf.get(), leaf_pkey.get(), nullptr,
+                      bio_in.get(), /*flags*/ 0));
   ASSERT_TRUE(p7);
   EXPECT_TRUE(PKCS7_type_is_signed(p7.get()));
   EXPECT_FALSE(PKCS7_is_detached(p7.get()));
@@ -1852,15 +2004,30 @@ TEST(PKCS7Test, TestSigned) {
   store.reset(X509_STORE_new());
   ASSERT_TRUE(X509_STORE_add_cert(store.get(), root.get()));
 
+  // detached
   certs.reset(sk_X509_new_null());
   ASSERT_TRUE(sk_X509_push(certs.get(), leaf.get()));
-  // bio_in.reset(BIO_new_mem_buf(buf, sizeof(buf)));
   bio_out.reset(BIO_new(BIO_s_mem()));
-  EXPECT_TRUE(PKCS7_verify(p7.get(), certs.get(), store.get(), nullptr, bio_out.get(), /*flags*/0));
-  // TODO [childw] add test cases for both attached and dettached signatures
-  // EXPECT_TRUE(PKCS7_verify(p7.get(), certs.get(), store.get(), bio_in.get(), bio_out.get(), /*flags*/0));
-  root.release();
-  leaf.release(); // |p7| takes ownership
-  ASSERT_EQ((int)sizeof(out_buf), BIO_read(bio_out.get(), out_buf, sizeof(out_buf)));
+  EXPECT_TRUE(PKCS7_verify(p7.get(), certs.get(), store.get(), nullptr,
+                           bio_out.get(), /*flags*/ 0));
+  ASSERT_EQ((int)sizeof(out_buf),
+            BIO_read(bio_out.get(), out_buf, sizeof(out_buf)));
+  EXPECT_EQ(Bytes(buf, sizeof(buf)), Bytes(out_buf, sizeof(out_buf)));
+
+  // attached
+  bio_in.reset(BIO_new_mem_buf(buf, sizeof(buf)));
+  p7.reset(PKCS7_sign(leaf.get(), leaf_pkey.get(), nullptr,
+                      bio_in.get(), /*flags*/ 0));
+
+  certs.reset(sk_X509_new_null());
+  ASSERT_TRUE(sk_X509_push(certs.get(), leaf.get()));
+  bio_in.reset(BIO_new_mem_buf(buf, sizeof(buf)));
+  bio_out.reset(BIO_new(BIO_s_mem()));
+  EXPECT_TRUE(PKCS7_verify(p7.get(), certs.get(), store.get(), bio_in.get(),
+                           bio_out.get(), /*flags*/ 0));
+  ASSERT_EQ((int)sizeof(out_buf),
+            BIO_read(bio_out.get(), out_buf, sizeof(out_buf)));
   EXPECT_EQ(Bytes(buf, sizeof(buf)), Bytes(out_buf, sizeof(out_buf)));
 }
+
+TEST(PKCS7Test, TestSignedEnveloped) {}

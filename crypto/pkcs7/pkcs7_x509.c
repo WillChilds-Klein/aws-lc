@@ -513,30 +513,23 @@ PKCS7 *PKCS7_sign(X509 *sign_cert, EVP_PKEY *pkey, STACK_OF(X509) *certs,
     OPENSSL_free(si_data.signature);
    } else if (sign_cert != NULL && pkey != NULL &&
              data != NULL) {
-             // !(flags & (PKCS7_DETACHED))) {
-     if ((ret = PKCS7_new()) == NULL) {
+     if ((ret = PKCS7_new()) == NULL ||
+         !PKCS7_set_type(ret, NID_pkcs7_signed) ||
+         !PKCS7_content_new(ret, NID_pkcs7_data)) {
        OPENSSL_PUT_ERROR(PKCS7, ERR_R_PKCS7_LIB);
        goto out;
      }
-
-     if (!PKCS7_set_type(ret, NID_pkcs7_signed))
-       goto out;
-
-     if (!PKCS7_content_new(ret, NID_pkcs7_data))
-       goto out;
 
      if (pkey && !PKCS7_sign_add_signer(ret, sign_cert, pkey, /*md*/NULL, flags)) {
        OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_PKCS7_ADD_SIGNER_ERROR);
        goto out;
      }
 
-     if (!(flags & PKCS7_NOCERTS)) {
-       for (size_t i = 0; i < sk_X509_num(certs); i++) {
-         if (!PKCS7_add_certificate(ret, sk_X509_value(certs, i)))
-           goto out;
+     for (size_t i = 0; i < sk_X509_num(certs); i++) {
+       if (!PKCS7_add_certificate(ret, sk_X509_value(certs, i))) {
+         goto out;
        }
      }
-
 
      if (flags & PKCS7_DETACHED) {
        if (PKCS7_type_is_data(ret->d.sign->contents)) {
@@ -545,17 +538,9 @@ PKCS7 *PKCS7_sign(X509 *sign_cert, EVP_PKEY *pkey, STACK_OF(X509) *certs,
        }
      }
 
-     if (flags & (PKCS7_STREAM | PKCS7_PARTIAL))
-       goto out;
-
      if (PKCS7_final(ret, data, flags))
        goto out;
   } else {
-    printf("FOOBAR %p %p %p %p %d\n", sign_cert, pkey, certs, data, EVP_PKEY_id(pkey));
-    printf("FLAGS %d %d %d %d\n",
-      flags & PKCS7_NOATTR, flags & PKCS7_BINARY,
-           flags & PKCS7_NOCERTS, flags & PKCS7_DETACHED
-    );
     OPENSSL_PUT_ERROR(PKCS7, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
     goto out;
   }

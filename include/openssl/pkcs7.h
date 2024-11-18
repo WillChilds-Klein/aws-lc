@@ -400,7 +400,6 @@ OPENSSL_EXPORT PKCS7* SMIME_read_PKCS7(BIO *in, BIO **bcont);
 OPENSSL_EXPORT int SMIME_write_PKCS7(BIO *out, PKCS7 *p7, BIO *data, int flags);
 OPENSSL_EXPORT int PKCS7_is_detached(PKCS7 *p7);
 OPENSSL_EXPORT PKCS7_RECIP_INFO *PKCS7_add_recipient(PKCS7 *p7, X509 *x509);
-OPENSSL_EXPORT int PKCS7_final(PKCS7 *p7, BIO *data, int flags);
 OPENSSL_EXPORT BIO *PKCS7_dataDecode(PKCS7 *p7, EVP_PKEY *pkey, BIO *in_bio, X509 *pcert);
 
 // PKCS7_sign [Deprecated]
