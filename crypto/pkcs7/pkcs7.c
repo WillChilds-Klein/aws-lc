@@ -1224,6 +1224,32 @@ static BIO *pkcs7_data_decode(PKCS7 *p7, EVP_PKEY *pkey, X509 *pcert) {
   }
 
   switch (OBJ_obj2nid(p7->type)) {
+    case NID_pkcs7_signed:
+      /*
+       * p7->d.sign->contents is a PKCS7 structure consisting of a contentType
+       * field and optional content.
+       * data_body is NULL if that structure has no (=detached) content
+       * or if the contentType is wrong (i.e., not "data").
+       */
+      data_body = PKCS7_get_octet_string(p7->d.sign->contents);
+      if (!PKCS7_is_detached(p7) && data_body == NULL) {
+        OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_INVALID_SIGNED_DATA_TYPE);
+        goto err;
+      }
+      // md_sk = p7->d.sign->md_algs;
+      break;
+    case NID_pkcs7_signedAndEnveloped:
+      rsk = p7->d.signed_and_enveloped->recipientinfo;
+      // md_sk = p7->d.signed_and_enveloped->md_algs;
+      /* data_body is NULL if the optional EncryptedContent is missing. */
+      data_body = p7->d.signed_and_enveloped->enc_data->enc_data;
+      enc_alg = p7->d.signed_and_enveloped->enc_data->algorithm;
+      cipher = EVP_get_cipherbynid(OBJ_obj2nid(enc_alg->algorithm));
+      if (cipher == NULL) {
+        OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_UNSUPPORTED_CIPHER_TYPE);
+        goto err;
+      }
+      break;
     case NID_pkcs7_enveloped:
       rsk = p7->d.enveloped->recipientinfo;
       enc_alg = p7->d.enveloped->enc_data->algorithm;
@@ -1238,6 +1264,12 @@ static BIO *pkcs7_data_decode(PKCS7 *p7, EVP_PKEY *pkey, X509 *pcert) {
     default:
       OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_UNSUPPORTED_CONTENT_TYPE);
       goto err;
+  }
+
+  // Detached content must be supplied via in_bio instead
+  if (data_body == NULL) {
+    OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_NO_CONTENT);
+    goto err;
   }
 
   if ((cipher_bio = BIO_new(BIO_f_cipher())) == NULL) {
