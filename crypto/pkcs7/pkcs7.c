@@ -1247,6 +1247,32 @@ static BIO *pkcs7_data_decode(PKCS7 *p7, EVP_PKEY *pkey, X509 *pcert) {
   }
 
   switch (OBJ_obj2nid(p7->type)) {
+    case NID_pkcs7_signed:
+      /*
+       * p7->d.sign->contents is a PKCS7 structure consisting of a contentType
+       * field and optional content.
+       * data_body is NULL if that structure has no (=detached) content
+       * or if the contentType is wrong (i.e., not "data").
+       */
+      data_body = PKCS7_get_octet_string(p7->d.sign->contents);
+      if (!PKCS7_is_detached(p7) && data_body == NULL) {
+        OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_INVALID_SIGNED_DATA_TYPE);
+        goto err;
+      }
+      // md_sk = p7->d.sign->md_algs;
+      break;
+    case NID_pkcs7_signedAndEnveloped:
+      rsk = p7->d.signed_and_enveloped->recipientinfo;
+      // md_sk = p7->d.signed_and_enveloped->md_algs;
+      /* data_body is NULL if the optional EncryptedContent is missing. */
+      data_body = p7->d.signed_and_enveloped->enc_data->enc_data;
+      enc_alg = p7->d.signed_and_enveloped->enc_data->algorithm;
+      cipher = EVP_get_cipherbynid(OBJ_obj2nid(enc_alg->algorithm));
+      if (cipher == NULL) {
+        OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_UNSUPPORTED_CIPHER_TYPE);
+        goto err;
+      }
+      break;
     case NID_pkcs7_enveloped:
       rsk = p7->d.enveloped->recipientinfo;
       enc_alg = p7->d.enveloped->enc_data->algorithm;
@@ -1261,6 +1287,12 @@ static BIO *pkcs7_data_decode(PKCS7 *p7, EVP_PKEY *pkey, X509 *pcert) {
     default:
       OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_UNSUPPORTED_CONTENT_TYPE);
       goto err;
+  }
+
+  // Detached content must be supplied via in_bio instead
+  if (data_body == NULL) {
+    OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_NO_CONTENT);
+    goto err;
   }
 
   if ((cipher_bio = BIO_new(BIO_f_cipher())) == NULL) {
@@ -1628,20 +1660,13 @@ err:
 int PKCS7_verify(PKCS7 *p7, STACK_OF(X509) *certs, X509_STORE *store,
                  BIO *indata, BIO *out, int flags) {
   GUARD_PTR(p7);
-  GUARD_PTR(certs);
   GUARD_PTR(store);
-  STACK_OF(X509) *signers;
-  STACK_OF(X509) *untrusted = NULL;
+  STACK_OF(X509) *signers = NULL, *untrusted = NULL;
   X509 *signer;
   PKCS7_SIGNER_INFO *si;
   X509_STORE_CTX *cert_ctx = NULL;
   BIO *p7bio = NULL;
   int ret = 0;
-
-  if (p7 == NULL) {
-    OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_INVALID_NULL_POINTER);
-    goto err;
-  }
 
   if (!PKCS7_type_is_signed(p7)) {
     OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_WRONG_CONTENT_TYPE);
@@ -1660,25 +1685,31 @@ int PKCS7_verify(PKCS7 *p7, STACK_OF(X509) *certs, X509_STORE *store,
     goto err;
   }
 
-  STACK_OF(X509) *included_certs = pkcs7_get0_certificates(p7);
-  if ((signers = PKCS7_get0_signers(p7, certs, flags)) == NULL ||
-      (cert_ctx = X509_STORE_CTX_new()) == NULL ||
-      !pkcs7_x509_add_certs_new(&untrusted, certs, 0 /*flags*/) ||
-      !pkcs7_x509_add_certs_new(&untrusted, included_certs, 0 /*flags*/)) {
-    OPENSSL_PUT_ERROR(PKCS7, ERR_R_PKCS7_LIB);
+  if ((signers = PKCS7_get0_signers(p7, certs, flags)) == NULL) {
+    OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_NO_SIGNERS);
     goto err;
   }
 
-  for (size_t k = 0; k < sk_X509_num(signers); k++) {
-    signer = sk_X509_value(signers, k);
-    if (!X509_STORE_CTX_init(cert_ctx, store, signer, untrusted)) {
-      OPENSSL_PUT_ERROR(PKCS7, ERR_R_X509_LIB);
+  if (!(flags & PKCS7_NOVERIFY)) {
+    STACK_OF(X509) *included_certs = pkcs7_get0_certificates(p7);
+    if ((cert_ctx = X509_STORE_CTX_new()) == NULL ||
+        !pkcs7_x509_add_certs_new(&untrusted, certs, 0 /*flags*/) ||
+        !pkcs7_x509_add_certs_new(&untrusted, included_certs, 0 /*flags*/)) {
+      OPENSSL_PUT_ERROR(PKCS7, ERR_R_PKCS7_LIB);
       goto err;
     }
-    if (!X509_STORE_CTX_set_default(cert_ctx, "smime_sign")) {
-      goto err;
-    }
-    X509_STORE_CTX_set0_crls(cert_ctx, p7->d.sign->crl);
+
+    for (size_t k = 0; k < sk_X509_num(signers); k++) {
+      signer = sk_X509_value(signers, k);
+      if (!X509_STORE_CTX_init(cert_ctx, store, signer, untrusted)) {
+        OPENSSL_PUT_ERROR(PKCS7, ERR_R_X509_LIB);
+        goto err;
+      }
+      if (!X509_STORE_CTX_set_default(cert_ctx, "smime_sign")) {
+        goto err;
+      }
+      X509_STORE_CTX_set0_crls(cert_ctx, p7->d.sign->crl);
+  }
     // NOTE: unlike most of our functions, |X509_verify_cert| can return <= 0
     if (X509_verify_cert(cert_ctx) <= 0) {
       OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_CERTIFICATE_VERIFY_ERROR);
