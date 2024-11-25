@@ -5212,7 +5212,6 @@ soBsxWI=
 )";
 
 TEST(X509Test, BER) {
-  GTEST_SKIP();
   // Constructed strings are forbidden in DER.
   EXPECT_FALSE(CertFromPEM(kConstructedBitString));
   EXPECT_FALSE(CertFromPEM(kConstructedOctetString));
@@ -7361,7 +7360,6 @@ TEST(X509Test, X509_OBJECT_heap) {
 }
 
 TEST(X509Test, NameAttributeValues) {
-  GTEST_SKIP();
   // 1.2.840.113554.4.1.72585.0. We use an unrecognized OID because using an
   // arbitrary ASN.1 type as the value for commonName is invalid. Our parser
   // does not check this, but best to avoid unrelated errors in tests, in case

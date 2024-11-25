@@ -436,10 +436,6 @@ OPENSSL_EXPORT int PKCS7_verify(PKCS7 *p7, STACK_OF(X509) *certs, X509_STORE *st
 #define PKCS7_NOINTERN 0x10
 #define PKCS7_NOVERIFY 0x20
 
-
-#define PKCS7_NO_DUAL_CONTENT 0x40
-#define PKCS7_NOCRL 0x80
-
 // PKCS7_sign can operate in two modes to provide some backwards compatibility:
 //
 // TODO [childw] update this
@@ -482,12 +478,6 @@ OPENSSL_EXPORT OPENSSL_DEPRECATED int PKCS7_set_digest(PKCS7 *p7, const EVP_MD *
 // PKCS7_get_recipient_info returns a pointer to a stack containing |p7|'s
 // |PKCS7_RECIP_INFO| or NULL if none are present.
 OPENSSL_EXPORT OPENSSL_DEPRECATED STACK_OF(PKCS7_RECIP_INFO) *PKCS7_get_recipient_info(PKCS7 *p7);
-
-// BIO_get_cipher_status returns 1 if the cipher is in a healthy state or 0
-// otherwise. Unhealthy state could indicate decryption failure or other
-// abnormalities. Data read from an unhealthy cipher should not be considered
-// authentic.
-OPENSSL_EXPORT OPENSSL_DEPRECATED int BIO_get_cipher_status(BIO *b);
 
 // PKCS7_add_recipient allocates a new |PCKS7_RECEPIENT_INFO|, adds |x509| to it
 // and returns that |PCKS7_RECEPIENT_INFO|.

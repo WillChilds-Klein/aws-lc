@@ -1001,7 +1001,7 @@ OPENSSL_END_ALLOW_DEPRECATED
         continue;
       }
       int sign_nid = OBJ_obj2nid(si->digest_alg->algorithm);
-      bio_tmp = pkcs7_find_digest(&md_ctx, bio_tmp, sign_nid);
+      bio_tmp = pkcs7_find_digest(&md_ctx, bio, sign_nid);
       if (bio_tmp == NULL) {
         goto err;
       }
