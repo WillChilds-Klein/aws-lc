@@ -2083,8 +2083,8 @@ TEST(PKCS7Test, TestSigned) {
   X509_up_ref(leaf.get());
 
   bio_in.reset(BIO_new_mem_buf(buf, sizeof(buf)));
-  p7.reset(PKCS7_sign(leaf.get(), leaf_pkey.get(), nullptr,
-                      bio_in.get(), /*flags*/ 0));
+  p7.reset(PKCS7_sign(leaf.get(), leaf_pkey.get(), nullptr, bio_in.get(),
+                      /*flags*/ 0));
   ASSERT_TRUE(p7);
   EXPECT_TRUE(PKCS7_type_is_signed(p7.get()));
   EXPECT_FALSE(PKCS7_is_detached(p7.get()));
@@ -2104,8 +2104,8 @@ TEST(PKCS7Test, TestSigned) {
 
   // attached
   bio_in.reset(BIO_new_mem_buf(buf, sizeof(buf)));
-  p7.reset(PKCS7_sign(leaf.get(), leaf_pkey.get(), nullptr,
-                      bio_in.get(), /*flags*/ 0));
+  p7.reset(PKCS7_sign(leaf.get(), leaf_pkey.get(), nullptr, bio_in.get(),
+                      /*flags*/ 0));
 
   certs.reset(sk_X509_new_null());
   ASSERT_TRUE(sk_X509_push(certs.get(), leaf.get()));

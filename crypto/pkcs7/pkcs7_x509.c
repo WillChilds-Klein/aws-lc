@@ -432,42 +432,6 @@ static PKCS7_SIGNER_INFO *PKCS7_sign_add_signer(PKCS7 *p7, X509 *signcert,
             goto err;
     }
 
-  // TODO [childw] this means we tacitly assume + enforce PKCS7_NOATTR. need to
-  // document this and other implicit flags
-    // if (!(flags & PKCS7_NOATTR)) {
-    //     if (!PKCS7_add_attrib_content_type(si, NULL))
-    //         goto err;
-    //     /* Add SMIMECapabilities */
-    //     if (!(flags & PKCS7_NOSMIMECAP)) {
-    //         if ((smcap = sk_X509_ALGOR_new_null()) == NULL) {
-    //             ERR_raise(ERR_LIB_PKCS7, ERR_R_CRYPTO_LIB);
-    //             goto err;
-    //         }
-    //         if (!add_cipher_smcap(smcap, NID_aes_256_cbc, -1)
-    //             || !add_digest_smcap(smcap, NID_id_GostR3411_2012_256, -1)
-    //             || !add_digest_smcap(smcap, NID_id_GostR3411_2012_512, -1)
-    //             || !add_digest_smcap(smcap, NID_id_GostR3411_94, -1)
-    //             || !add_cipher_smcap(smcap, NID_id_Gost28147_89, -1)
-    //             || !add_cipher_smcap(smcap, NID_aes_192_cbc, -1)
-    //             || !add_cipher_smcap(smcap, NID_aes_128_cbc, -1)
-    //             || !add_cipher_smcap(smcap, NID_des_ede3_cbc, -1)
-    //             || !add_cipher_smcap(smcap, NID_rc2_cbc, 128)
-    //             || !add_cipher_smcap(smcap, NID_rc2_cbc, 64)
-    //             || !add_cipher_smcap(smcap, NID_des_cbc, -1)
-    //             || !add_cipher_smcap(smcap, NID_rc2_cbc, 40)
-    //             || !PKCS7_add_attrib_smimecap(si, smcap))
-    //             goto err;
-    //         sk_X509_ALGOR_pop_free(smcap, X509_ALGOR_free);
-    //         smcap = NULL;
-    //     }
-    //     if (flags & PKCS7_REUSE_DIGEST) {
-    //         if (!pkcs7_copy_existing_digest(p7, si))
-    //             goto err;
-    //         if (!(flags & PKCS7_PARTIAL)
-    //             && !PKCS7_SIGNER_INFO_sign(si))
-    //             goto err;
-    //     }
-    // }
     return si;
  err:
     sk_X509_ALGOR_pop_free(smcap, X509_ALGOR_free);
@@ -595,6 +559,7 @@ int PKCS7_add_certificate(PKCS7 *p7, X509 *x509) {
 
 int PKCS7_add_crl(PKCS7 *p7, X509_CRL *crl) {
   STACK_OF(X509_CRL) **sk;
+
   if (p7 == NULL || crl == NULL) {
     OPENSSL_PUT_ERROR(PKCS7, ERR_R_PASSED_NULL_PARAMETER);
     return 0;

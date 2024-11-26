@@ -272,12 +272,6 @@ OPENSSL_EXPORT int PKCS7_type_is_signed(const PKCS7 *p7);
 // signedAndEnveloped
 OPENSSL_EXPORT int PKCS7_type_is_signedAndEnveloped(const PKCS7 *p7);
 
-
-// TODO [childw]
-OPENSSL_EXPORT int PKCS7_verify(PKCS7 *p7, STACK_OF(X509) *certs, X509_STORE *store, BIO *indata, BIO *out, int flags);
-//OPENSSL_EXPORT PKCS7* SMIME_read_PKCS7(BIO *in, BIO **bcont);
-//OPENSSL_EXPORT int SMIME_write_PKCS7(BIO *out, PKCS7 *p7, BIO *data, int flags);
-
 // PKCS7_sign [Deprecated]
 //
 // TODO [childw] update this
@@ -348,6 +342,16 @@ OPENSSL_EXPORT OPENSSL_DEPRECATED PKCS7 *PKCS7_sign(X509 *sign_cert,
                                                     EVP_PKEY *pkey,
                                                     STACK_OF(X509) *certs,
                                                     BIO *data, int flags);
+
+// TODO [childw]
+// - tacitly enforce PKCS7_NOATTR
+OPENSSL_EXPORT OPENSSL_DEPRECATED int PKCS7_verify(PKCS7 *p7, STACK_OF(X509) *certs, X509_STORE *store, BIO *indata, BIO *out, int flags);
+
+// SMIME_read_PKCS7 is a no-op and returns NULL
+OPENSSL_EXPORT OPENSSL_DEPRECATED PKCS7* SMIME_read_PKCS7(BIO *in, BIO **bcont);
+
+// SMIME_write_PKCS7 is a no-op and returns 0
+OPENSSL_EXPORT OPENSSL_DEPRECATED int SMIME_write_PKCS7(BIO *out, PKCS7 *p7, BIO *data, int flags);
 
 // PKCS7_is_detached returns 0 if |p7| has attached content and 1 otherwise.
 OPENSSL_EXPORT OPENSSL_DEPRECATED int PKCS7_is_detached(PKCS7 *p7);

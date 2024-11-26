@@ -1677,7 +1677,7 @@ int PKCS7_verify(PKCS7 *p7, STACK_OF(X509) *certs, X509_STORE *store,
         goto err;
       }
       X509_STORE_CTX_set0_crls(cert_ctx, p7->d.sign->crl);
-  }
+    }
     // NOTE: unlike most of our functions, |X509_verify_cert| can return <= 0
     if (X509_verify_cert(cert_ctx) <= 0) {
       OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_CERTIFICATE_VERIFY_ERROR);
@@ -1718,5 +1718,9 @@ err:
   }
   return ret;
 }
+
+PKCS7 *SMIME_read_PKCS7(BIO *in, BIO **bcont) { return NULL; }
+
+int SMIME_write_PKCS7(BIO *out, PKCS7 *p7, BIO *data, int flags) { return 0; }
 
 OPENSSL_END_ALLOW_DEPRECATED

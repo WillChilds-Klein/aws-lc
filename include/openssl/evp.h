@@ -1351,6 +1351,7 @@ OPENSSL_EXPORT OPENSSL_DEPRECATED int EVP_PKEY_CTX_set_dsa_paramgen_q_bits(
 OPENSSL_EXPORT OPENSSL_DEPRECATED int EVP_PKEY_CTX_ctrl_str(EVP_PKEY_CTX *ctx, const char *type,
                               const char *value);
 
+
 // Preprocessor compatibility section (hidden).
 //
 // Historically, a number of APIs were implemented in OpenSSL as macros and
