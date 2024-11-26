@@ -613,8 +613,6 @@ void PKCS7_RECIP_INFO_get0_alg(PKCS7_RECIP_INFO *ri, X509_ALGOR **penc) {
   }
 }
 
-// BEGIN DATAINIT
-
 static ASN1_OCTET_STRING *PKCS7_get_octet_string(PKCS7 *p7) {
   GUARD_PTR(p7);
   if (PKCS7_type_is_data(p7)) {
