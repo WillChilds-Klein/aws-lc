@@ -1319,22 +1319,6 @@ hJTbHtjEDJ7BHLC/CNUhXbpyyu1y
   EXPECT_EQ(Bytes(pkcs7_bytes, pkcs7_len),
             Bytes(kExpectedOutput, sizeof(kExpectedOutput)));
 
-  // TODO [childw] modify this or drop test case?
-  // Other option combinations should fail.
-  // EXPECT_FALSE(PKCS7_sign(cert.get(), key.get(), /*certs=*/nullptr,
-  //                         // data_bio.get(),
-  //                         // PKCS7_NOATTR | PKCS7_BINARY | PKCS7_NOCERTS));
-  // EXPECT_FALSE(PKCS7_sign(cert.get(), key.get(), /*certs=*/nullptr,
-  //                         data_bio.get(),
-  //                         PKCS7_BINARY | PKCS7_NOCERTS | PKCS7_DETACHED));
-  // EXPECT_FALSE(
-  //     PKCS7_sign(cert.get(), key.get(), /*certs=*/nullptr, data_bio.get(),
-  //                PKCS7_NOATTR | PKCS7_TEXT | PKCS7_NOCERTS |
-  //                PKCS7_DETACHED));
-  // EXPECT_FALSE(PKCS7_sign(cert.get(), key.get(), /*certs=*/nullptr,
-  //                         data_bio.get(),
-  //                         PKCS7_NOATTR | PKCS7_BINARY | PKCS7_DETACHED));
-
   ERR_clear_error();
 }
 
@@ -1689,6 +1673,7 @@ TEST(PKCS7Test, DataInitFinal) {
   EXPECT_FALSE(PKCS7_dataFinal(p7.get(), bio.get()));
 }
 
+// TODO [childw] delete this, it's covered in ruby's tests.
 TEST(PKCS7Test, RubyRepro) {
   bssl::UniquePtr<PKCS7> p7;
   const uint8_t kRubyTestEnveloped[] = {

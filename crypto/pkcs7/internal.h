@@ -134,7 +134,9 @@ OPENSSL_EXPORT int BIO_set_cipher(BIO *b, const EVP_CIPHER *cipher,
 // abnormalities. Data read from an unhealthy cipher should not be considered
 // authentic.
 OPENSSL_EXPORT int BIO_get_cipher_status(BIO *b);
-// TODO [childw]
+
+// pkcs7_final initializes a data BIO using |p7|, copies all of |data| into it,
+// before final finalizing |p7|. It returns 1 on success and 0 on failure.
 OPENSSL_EXPORT int pkcs7_final(PKCS7 *p7, BIO *data);
 
 #if defined(__cplusplus)

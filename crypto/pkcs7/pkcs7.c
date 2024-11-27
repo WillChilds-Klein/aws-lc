@@ -1092,7 +1092,7 @@ int pkcs7_final(PKCS7 *p7, BIO *data) {
   if ((p7bio = PKCS7_dataInit(p7, NULL)) == NULL) {
     OPENSSL_END_ALLOW_DEPRECATED
     OPENSSL_PUT_ERROR(PKCS7, ERR_R_PKCS7_LIB);
-    return 0;
+    goto err;
   }
 
   if (!pkcs7_bio_copy_content(data, p7bio)) {
@@ -1223,12 +1223,6 @@ static BIO *pkcs7_data_decode(PKCS7 *p7, EVP_PKEY *pkey, X509 *pcert) {
 
   switch (OBJ_obj2nid(p7->type)) {
     case NID_pkcs7_signed:
-      /*
-       * p7->d.sign->contents is a PKCS7 structure consisting of a contentType
-       * field and optional content.
-       * data_body is NULL if that structure has no (=detached) content
-       * or if the contentType is wrong (i.e., not "data").
-       */
       data_body = PKCS7_get_octet_string(p7->d.sign->contents);
       if (!PKCS7_is_detached(p7) && data_body == NULL) {
         OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_INVALID_SIGNED_DATA_TYPE);

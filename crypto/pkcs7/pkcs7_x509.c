@@ -233,19 +233,15 @@ int PKCS7_bundle_CRLs(CBB *out, const STACK_OF(X509_CRL) *crls) {
 }
 
 PKCS7 *d2i_PKCS7_bio(BIO *bio, PKCS7 **out) {
-  if (bio == NULL) {
-    OPENSSL_PUT_ERROR(PKCS7, ERR_R_PASSED_NULL_PARAMETER);
-    return NULL;
-  }
-
+  GUARD_PTR(bio);
   uint8_t *data;
   size_t len;
-  // Historically, this function did not impose a limit in OpenSSL and is used
-  // to read CRLs, so we leave this without an external bound.
+  // Read BIO contents into newly allocated buffer
   if (!BIO_read_asn1(bio, &data, &len, INT_MAX)) {
     return NULL;
   }
   const uint8_t *ptr = data;
+  // d2i_PKCS7 handles indefinite-length BER properly, so use it
   void *ret = d2i_PKCS7(out, &ptr, len);
   OPENSSL_free(data);
   return ret;
