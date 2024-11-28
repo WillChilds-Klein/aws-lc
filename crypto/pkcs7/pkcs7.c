@@ -1222,26 +1222,6 @@ static BIO *pkcs7_data_decode(PKCS7 *p7, EVP_PKEY *pkey, X509 *pcert) {
   }
 
   switch (OBJ_obj2nid(p7->type)) {
-    case NID_pkcs7_signed:
-      data_body = PKCS7_get_octet_string(p7->d.sign->contents);
-      if (!PKCS7_is_detached(p7) && data_body == NULL) {
-        OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_INVALID_SIGNED_DATA_TYPE);
-        goto err;
-      }
-      // md_sk = p7->d.sign->md_algs;
-      break;
-    case NID_pkcs7_signedAndEnveloped:
-      rsk = p7->d.signed_and_enveloped->recipientinfo;
-      // md_sk = p7->d.signed_and_enveloped->md_algs;
-      /* data_body is NULL if the optional EncryptedContent is missing. */
-      data_body = p7->d.signed_and_enveloped->enc_data->enc_data;
-      enc_alg = p7->d.signed_and_enveloped->enc_data->algorithm;
-      cipher = EVP_get_cipherbynid(OBJ_obj2nid(enc_alg->algorithm));
-      if (cipher == NULL) {
-        OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_UNSUPPORTED_CIPHER_TYPE);
-        goto err;
-      }
-      break;
     case NID_pkcs7_enveloped:
       rsk = p7->d.enveloped->recipientinfo;
       enc_alg = p7->d.enveloped->enc_data->algorithm;
@@ -1440,41 +1420,34 @@ err:
 }
 
 static STACK_OF(X509) *pkcs7_get0_certificates(const PKCS7 *p7) {
-  if (p7->d.ptr == NULL)
-    return NULL;
-  if (PKCS7_type_is_signed(p7))
-    return p7->d.sign->cert;
-  if (PKCS7_type_is_signedAndEnveloped(p7))
-    return p7->d.signed_and_enveloped->cert;
-  return NULL;
+  GUARD_PTR(p7);
+  GUARD_PTR(p7->d.ptr);
+  switch (OBJ_obj2nid(p7->type)) {
+    case NID_pkcs7_signed:
+      return p7->d.sign->cert;
+    case NID_pkcs7_signedAndEnveloped:
+      return p7->d.signed_and_enveloped->cert;
+    default:
+      return NULL;
+  }
 }
 
 static STACK_OF(X509) *PKCS7_get0_signers(PKCS7 *p7, STACK_OF(X509) *certs,
                                           int flags) {
-  STACK_OF(X509) *signers, *included_certs;
-  STACK_OF(PKCS7_SIGNER_INFO) *sinfos = NULL;
-  PKCS7_SIGNER_INFO *si;
-  PKCS7_ISSUER_AND_SERIAL *ias;
-  X509 *signer;
-
-  if (p7 == NULL) {
-    OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_INVALID_NULL_POINTER);
-    return NULL;
-  }
+  GUARD_PTR(p7);
+  STACK_OF(X509) *signers = NULL;
+  X509 *signer = NULL;
 
   if (!PKCS7_type_is_signed(p7)) {
     OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_WRONG_CONTENT_TYPE);
     return NULL;
   }
-  included_certs = pkcs7_get0_certificates(p7);
-
-  /* Collect all the signers together */
-
-  sinfos = PKCS7_get_signer_info(p7);
+  STACK_OF(X509) *included_certs = pkcs7_get0_certificates(p7);
+  STACK_OF(PKCS7_SIGNER_INFO) *sinfos = PKCS7_get_signer_info(p7);
 
   if (sk_PKCS7_SIGNER_INFO_num(sinfos) <= 0) {
     OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_NO_SIGNERS);
-    return 0;
+    return NULL;
   }
 
   if ((signers = sk_X509_new_null()) == NULL) {
@@ -1483,62 +1456,55 @@ static STACK_OF(X509) *PKCS7_get0_signers(PKCS7 *p7, STACK_OF(X509) *certs,
   }
 
   for (size_t i = 0; i < sk_PKCS7_SIGNER_INFO_num(sinfos); i++) {
-    si = sk_PKCS7_SIGNER_INFO_value(sinfos, i);
-    ias = si->issuer_and_serial;
-    signer = NULL;
-    /* If any certificates passed they take priority */
+    PKCS7_SIGNER_INFO *si = sk_PKCS7_SIGNER_INFO_value(sinfos, i);
+    PKCS7_ISSUER_AND_SERIAL *ias = si->issuer_and_serial;
+    // Prioritize |certs| passed by caller
     signer = X509_find_by_issuer_and_serial(certs, ias->issuer, ias->serial);
-    if (signer == NULL && (flags & PKCS7_NOINTERN) == 0)
+    if (!signer) {
       signer = X509_find_by_issuer_and_serial(included_certs, ias->issuer,
                                               ias->serial);
-    if (signer == NULL) {
+    }
+    if (!signer) {
       OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_SIGNER_CERTIFICATE_NOT_FOUND);
       sk_X509_free(signers);
-      return 0;
+      return NULL;
     }
     if (!sk_X509_push(signers, signer)) {
+      OPENSSL_PUT_ERROR(PKCS7, ERR_R_PKCS7_LIB);
       sk_X509_free(signers);
       return NULL;
     }
   }
+
   return signers;
 }
 
-static int pkcs7_x509_add_cert(STACK_OF(X509) *sk, X509 *cert, int flags) {
-  if (sk == NULL) {
-    OPENSSL_PUT_ERROR(X509, ERR_R_PASSED_NULL_PARAMETER);
-    return 0;
+static int pkcs7_x509_add_cert_new(STACK_OF(X509) **p_sk, X509 *cert) {
+  GUARD_PTR(p_sk);
+  if (*p_sk == NULL && (*p_sk = sk_X509_new_null()) == NULL) {
+    goto err;
   }
-  if (!sk_X509_insert(sk, cert, -1)) {
-    OPENSSL_PUT_ERROR(X509, ERR_R_CRYPTO_LIB);
-    return 0;
+  if (!sk_X509_insert(*p_sk, cert, -1)) {
+    goto err;
   }
   return 1;
-}
-
-static int pkcs7_x509_add_cert_new(STACK_OF(X509) **p_sk, X509 *cert,
-                                   int flags) {
-  if (*p_sk == NULL && (*p_sk = sk_X509_new_null()) == NULL) {
-    OPENSSL_PUT_ERROR(X509, ERR_R_CRYPTO_LIB);
-    return 0;
-  }
-  return pkcs7_x509_add_cert(*p_sk, cert, flags);
+err:
+  OPENSSL_PUT_ERROR(X509, ERR_R_CRYPTO_LIB);
+  return 0;
 }
 
 static int pkcs7_x509_add_certs_new(STACK_OF(X509) **p_sk,
-                                    STACK_OF(X509) *certs, int flags) {
-  /* compiler would allow 'const' for the certs, yet they may get up-ref'ed */
-  int n = sk_X509_num(certs /* may be NULL */);
-  int i;
-
-  for (i = 0; i < n; i++) {
-    /* if prepend, add certs in reverse order to keep original order */
-    if (!pkcs7_x509_add_cert_new(p_sk, sk_X509_value(certs, i), flags))
+                                    STACK_OF(X509) *certs) {
+  GUARD_PTR(p_sk);
+  if (!certs) { // |certs| can be null in the caller
+    return 1;
+  }
+  for (size_t i = 0; i < sk_X509_num(certs); i++) {
+    if (!pkcs7_x509_add_cert_new(p_sk, sk_X509_value(certs, i)))
       return 0;
   }
   return 1;
 }
-
 
 static int pkcs7_signatureVerify(BIO *bio, PKCS7 *p7, PKCS7_SIGNER_INFO *si,
                                  X509 *signer) {
@@ -1618,7 +1584,6 @@ err:
   return ret;
 }
 
-/* This strongly overlaps with CMS_verify(), partly with PKCS7_dataVerify() */
 int PKCS7_verify(PKCS7 *p7, STACK_OF(X509) *certs, X509_STORE *store,
                  BIO *indata, BIO *out, int flags) {
   GUARD_PTR(p7);
@@ -1655,8 +1620,8 @@ int PKCS7_verify(PKCS7 *p7, STACK_OF(X509) *certs, X509_STORE *store,
   if (!(flags & PKCS7_NOVERIFY)) {
     STACK_OF(X509) *included_certs = pkcs7_get0_certificates(p7);
     if ((cert_ctx = X509_STORE_CTX_new()) == NULL ||
-        !pkcs7_x509_add_certs_new(&untrusted, certs, 0 /*flags*/) ||
-        !pkcs7_x509_add_certs_new(&untrusted, included_certs, 0 /*flags*/)) {
+        !pkcs7_x509_add_certs_new(&untrusted, certs) ||
+        !pkcs7_x509_add_certs_new(&untrusted, included_certs)) {
       OPENSSL_PUT_ERROR(PKCS7, ERR_R_PKCS7_LIB);
       goto err;
     }
