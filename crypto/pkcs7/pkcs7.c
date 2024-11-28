@@ -29,6 +29,7 @@
 #include "../internal.h"
 #include "internal.h"
 
+// TODO remove all other usages of OPENSSL_BEGIN_ALLOW_DEPRECATED in this file
 OPENSSL_BEGIN_ALLOW_DEPRECATED
 
 // 1.2.840.113549.1.7.1
@@ -1506,81 +1507,72 @@ static int pkcs7_x509_add_certs_new(STACK_OF(X509) **p_sk,
   return 1;
 }
 
-static int pkcs7_signatureVerify(BIO *bio, PKCS7 *p7, PKCS7_SIGNER_INFO *si,
+static int pkcs7_signature_verify(BIO *in_bio, PKCS7 *p7, PKCS7_SIGNER_INFO *si,
                                  X509 *signer) {
-  ASN1_OCTET_STRING *os;
-  EVP_MD_CTX *mdc_tmp, *mdc;
-  int ret = 0, i;
-  int md_type;
-  STACK_OF(X509_ATTRIBUTE) *sk;
-  BIO *btmp;
-  EVP_PKEY *pkey;
-  unsigned char *abuf = NULL;
+  GUARD_PTR(in_bio);
+  GUARD_PTR(p7);
+  GUARD_PTR(si);
+  GUARD_PTR(signer);
+  EVP_MD_CTX *mdc_copy = NULL;
+  int ret = 0;
 
-  mdc_tmp = EVP_MD_CTX_new();
-  if (mdc_tmp == NULL) {
+  switch (OBJ_obj2nid(p7->type)) {
+    case NID_pkcs7_signed:
+    case NID_pkcs7_signedAndEnveloped:
+      break;
+    default:
+      OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_WRONG_PKCS7_TYPE);
+      goto err;
+  }
+
+  const int md_type = OBJ_obj2nid(si->digest_alg->algorithm);
+  EVP_MD_CTX *mdc = NULL;
+  BIO *bio = in_bio;
+  // There may be multiple MD-type BIOs in the chain, so iterate until we find
+  // the BIO with MD type we're looking for.
+  while (bio) {
+    if ((bio = BIO_find_type(bio, BIO_TYPE_MD)) == NULL) {
+      OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_UNABLE_TO_FIND_MESSAGE_DIGEST);
+      goto err;
+    }
+    if (!BIO_get_md_ctx(bio, &mdc) || !mdc) {
+      OPENSSL_PUT_ERROR(PKCS7, ERR_R_PKCS7_LIB);
+      goto err;
+    }
+    if (EVP_MD_CTX_type(mdc) == md_type) {  // found it!
+      break;
+    }
+    bio = BIO_next(bio);
+  }
+
+  // Make a copy of |mdc| so we don't finalize the MD_CTX owned by |bio|
+  if ((mdc_copy = EVP_MD_CTX_new()) == NULL ||
+      !EVP_MD_CTX_copy_ex(mdc_copy, mdc)) {
     OPENSSL_PUT_ERROR(PKCS7, ERR_R_EVP_LIB);
     goto err;
   }
 
-  if (!PKCS7_type_is_signed(p7) && !PKCS7_type_is_signedAndEnveloped(p7)) {
-    OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_WRONG_PKCS7_TYPE);
+  // We don't currently support signed attributes
+  if (si->auth_attr && sk_X509_ATTRIBUTE_num(si->auth_attr) != 0) {
+    OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_INVALID_SIGNED_DATA_TYPE);
     goto err;
   }
 
-  md_type = OBJ_obj2nid(si->digest_alg->algorithm);
-
-  btmp = bio;
-  for (;;) {
-    if ((btmp == NULL) || ((btmp = BIO_find_type(btmp, BIO_TYPE_MD)) == NULL)) {
-      OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_UNABLE_TO_FIND_MESSAGE_DIGEST);
-      goto err;
-    }
-    BIO_get_md_ctx(btmp, &mdc);
-    if (mdc == NULL) {
-      OPENSSL_PUT_ERROR(PKCS7, ERR_R_INTERNAL_ERROR);
-      goto err;
-    }
-    if (EVP_MD_CTX_type(mdc) == md_type)
-      break;
-    /*
-     * Workaround for some broken clients that put the signature OID
-     * instead of the digest OID in digest_alg->algorithm
-     */
-    if (EVP_MD_get_pkey_type(EVP_MD_CTX_md(mdc)) == md_type)
-      break;
-    btmp = BIO_next(btmp);
-  }
-
-  /*
-   * mdc is the digest ctx that we want, unless there are attributes, in
-   * which case the digest is the signed attributes
-   */
-  if (!EVP_MD_CTX_copy_ex(mdc_tmp, mdc))
-    goto err;
-
-  sk = si->auth_attr;
-  if ((sk != NULL) && (sk_X509_ATTRIBUTE_num(sk) != 0)) {
-    // TODO [childw] can we get away with not supporting this?
-    OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_WRONG_CONTENT_TYPE);
+  EVP_PKEY *pkey;
+  if ((pkey = X509_get0_pubkey(signer)) == NULL) {
     goto err;
   }
 
-  os = si->enc_digest;
-  pkey = X509_get0_pubkey(signer);
-  if (pkey == NULL) {
-    goto err;
-  }
-
-  i = EVP_VerifyFinal(mdc_tmp, os->data, os->length, pkey);
-  if (i <= 0) {
+  ASN1_OCTET_STRING *data_body = si->enc_digest;
+  if (!EVP_VerifyFinal(mdc_copy, data_body->data, data_body->length, pkey)) {
     OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_SIGNATURE_FAILURE);
     goto err;
   }
+
   ret = 1;
+
 err:
-  OPENSSL_free(abuf);
-  EVP_MD_CTX_free(mdc_tmp);
+  EVP_MD_CTX_free(mdc_copy);
   return ret;
 }
 
@@ -1589,8 +1581,6 @@ int PKCS7_verify(PKCS7 *p7, STACK_OF(X509) *certs, X509_STORE *store,
   GUARD_PTR(p7);
   GUARD_PTR(store);
   STACK_OF(X509) *signers = NULL, *untrusted = NULL;
-  X509 *signer;
-  PKCS7_SIGNER_INFO *si;
   X509_STORE_CTX *cert_ctx = NULL;
   BIO *p7bio = NULL;
   int ret = 0;
@@ -1606,8 +1596,14 @@ int PKCS7_verify(PKCS7 *p7, STACK_OF(X509) *certs, X509_STORE *store,
     goto err;
   }
 
+  // We enforce OpenSSL's PKCS7_NO_DUAL_CONTENT flag in all cases
+  if (!PKCS7_is_detached(p7) && indata) {
+    OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_CONTENT_AND_DATA_PRESENT);
+    goto err;
+  }
+
   STACK_OF(PKCS7_SIGNER_INFO) *sinfos = PKCS7_get_signer_info(p7);
-  if (!sinfos || !sk_PKCS7_SIGNER_INFO_num(sinfos)) {
+  if (sinfos == NULL || sk_PKCS7_SIGNER_INFO_num(sinfos) == 0UL) {
     OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_NO_SIGNATURES_ON_DATA);
     goto err;
   }
@@ -1627,7 +1623,7 @@ int PKCS7_verify(PKCS7 *p7, STACK_OF(X509) *certs, X509_STORE *store,
     }
 
     for (size_t k = 0; k < sk_X509_num(signers); k++) {
-      signer = sk_X509_value(signers, k);
+      X509 *signer = sk_X509_value(signers, k);
       if (!X509_STORE_CTX_init(cert_ctx, store, signer, untrusted)) {
         OPENSSL_PUT_ERROR(PKCS7, ERR_R_X509_LIB);
         goto err;
@@ -1644,18 +1640,18 @@ int PKCS7_verify(PKCS7 *p7, STACK_OF(X509) *certs, X509_STORE *store,
     }
   }
 
-  if ((p7bio = PKCS7_dataInit(p7, indata)) == NULL) {
+  // In copying data into out, we also read it through digest filters on |p7| to
+  // calculate digest for verification.
+  if ((p7bio = PKCS7_dataInit(p7, indata)) == NULL ||
+      (out && !pkcs7_bio_copy_content(p7bio, out))) {
     goto err;
   }
 
-  if (out && !pkcs7_bio_copy_content(p7bio, out)) {
-    goto err;
-  }
-
+  // Verify signatures against signers
   for (size_t ii = 0; ii < sk_PKCS7_SIGNER_INFO_num(sinfos); ii++) {
-    si = sk_PKCS7_SIGNER_INFO_value(sinfos, ii);
-    signer = sk_X509_value(signers, ii);
-    if (!pkcs7_signatureVerify(p7bio, p7, si, signer)) {
+    PKCS7_SIGNER_INFO *si = sk_PKCS7_SIGNER_INFO_value(sinfos, ii);
+    X509 *signer = sk_X509_value(signers, ii);
+    if (!pkcs7_signature_verify(p7bio, p7, si, signer)) {
       OPENSSL_PUT_ERROR(PKCS7, PKCS7_R_SIGNATURE_FAILURE);
       goto err;
     }
@@ -1665,6 +1661,8 @@ int PKCS7_verify(PKCS7 *p7, STACK_OF(X509) *certs, X509_STORE *store,
 
 err:
   X509_STORE_CTX_free(cert_ctx);
+  // If |indata| was passed for detached signature, |PKCS7_dataInit| has pushed
+  // it onto |p7bio|. Pop the reference so caller retains ownership of |indata|.
   if (indata) {
     BIO_pop(p7bio);
   }

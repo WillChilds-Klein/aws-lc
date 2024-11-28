@@ -2077,7 +2077,7 @@ TEST(PKCS7Test, TestSigned) {
   store.reset(X509_STORE_new());
   ASSERT_TRUE(X509_STORE_add_cert(store.get(), root.get()));
 
-  // detached
+  // attached
   certs.reset(sk_X509_new_null());
   ASSERT_TRUE(sk_X509_push(certs.get(), leaf.get()));
   bio_out.reset(BIO_new(BIO_s_mem()));
@@ -2087,11 +2087,10 @@ TEST(PKCS7Test, TestSigned) {
             BIO_read(bio_out.get(), out_buf, sizeof(out_buf)));
   EXPECT_EQ(Bytes(buf, sizeof(buf)), Bytes(out_buf, sizeof(out_buf)));
 
-  // attached
+  // detached
   bio_in.reset(BIO_new_mem_buf(buf, sizeof(buf)));
   p7.reset(PKCS7_sign(leaf.get(), leaf_pkey.get(), nullptr, bio_in.get(),
-                      /*flags*/ 0));
-
+                      PKCS7_DETACHED));
   certs.reset(sk_X509_new_null());
   ASSERT_TRUE(sk_X509_push(certs.get(), leaf.get()));
   bio_in.reset(BIO_new_mem_buf(buf, sizeof(buf)));

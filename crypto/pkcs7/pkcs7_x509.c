@@ -498,8 +498,9 @@ PKCS7 *PKCS7_sign(X509 *sign_cert, EVP_PKEY *pkey, STACK_OF(X509) *certs,
        }
      }
 
-     if (pkcs7_final(ret, data))
+     if (pkcs7_final(ret, data)) {
        goto out;
+     }
   } else {
     OPENSSL_PUT_ERROR(PKCS7, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
     goto out;
