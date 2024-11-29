@@ -1497,7 +1497,7 @@ err:
 static int pkcs7_x509_add_certs_new(STACK_OF(X509) **p_sk,
                                     STACK_OF(X509) *certs) {
   GUARD_PTR(p_sk);
-  if (!certs) { // |certs| can be null in the caller
+  if (!certs) {  // |certs| can be null in the caller
     return 1;
   }
   for (size_t i = 0; i < sk_X509_num(certs); i++) {
@@ -1508,7 +1508,7 @@ static int pkcs7_x509_add_certs_new(STACK_OF(X509) **p_sk,
 }
 
 static int pkcs7_signature_verify(BIO *in_bio, PKCS7 *p7, PKCS7_SIGNER_INFO *si,
-                                 X509 *signer) {
+                                  X509 *signer) {
   GUARD_PTR(in_bio);
   GUARD_PTR(p7);
   GUARD_PTR(si);
