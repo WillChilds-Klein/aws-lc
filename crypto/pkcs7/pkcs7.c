@@ -1485,7 +1485,7 @@ static int pkcs7_x509_add_cert_new(STACK_OF(X509) **p_sk, X509 *cert) {
   if (*p_sk == NULL && (*p_sk = sk_X509_new_null()) == NULL) {
     goto err;
   }
-  if (!sk_X509_insert(*p_sk, cert, -1)) {
+  if (!sk_X509_push(*p_sk, cert)) {
     goto err;
   }
   return 1;
