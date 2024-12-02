@@ -1933,17 +1933,53 @@ TEST(PKCS7Test, TestSigned) {
             BIO_read(bio_out.get(), out_buf, sizeof(out_buf)));
   EXPECT_EQ(Bytes(buf, sizeof(buf)), Bytes(out_buf, sizeof(out_buf)));
 
+
   // detached
   bio_in.reset(BIO_new_mem_buf(buf, sizeof(buf)));
   p7.reset(PKCS7_sign(leaf.get(), leaf_pkey.get(), nullptr, bio_in.get(),
                       PKCS7_DETACHED));
+  EXPECT_TRUE(PKCS7_is_detached(p7.get()));
   certs.reset(sk_X509_new_null());
   ASSERT_TRUE(sk_X509_push(certs.get(), leaf.get()));
   bio_in.reset(BIO_new_mem_buf(buf, sizeof(buf)));
   bio_out.reset(BIO_new(BIO_s_mem()));
   EXPECT_TRUE(PKCS7_verify(p7.get(), certs.get(), store.get(), bio_in.get(),
                            bio_out.get(), /*flags*/ 0));
+  OPENSSL_memset(out_buf, '\0', sizeof(out_buf));
   ASSERT_EQ((int)sizeof(out_buf),
+            BIO_read(bio_out.get(), out_buf, sizeof(out_buf)));
+  EXPECT_EQ(Bytes(buf, sizeof(buf)), Bytes(out_buf, sizeof(out_buf)));
+
+  // signed and enveloped
+  p7.reset(PKCS7_new());
+  ASSERT_TRUE(p7);
+  ASSERT_TRUE(PKCS7_set_type(p7.get(), NID_pkcs7_signedAndEnveloped));
+  ASSERT_TRUE(PKCS7_set_cipher(p7.get(), EVP_aes_128_cbc()));
+  p7si.reset(PKCS7_SIGNER_INFO_new());
+  ASSERT_TRUE(PKCS7_SIGNER_INFO_set(p7si.get(), leaf.get(), leaf_pkey.get(), EVP_sha256()));
+  ASSERT_TRUE(PKCS7_add_signer(p7.get(), p7si.get()));
+  p7si.release();
+  // root cert will be "recipient"
+  ASSERT_TRUE(PKCS7_add_recipient(p7.get(), root.get()));
+  bio_in.reset(PKCS7_dataInit(p7.get(), nullptr));
+  EXPECT_TRUE(bio_in);
+  ASSERT_EQ((int)sizeof(buf), BIO_write(bio_in.get(), buf, sizeof(buf)));
+  ASSERT_TRUE(BIO_flush(bio_in.get())); // flush |bio_in| to do padding
+  EXPECT_TRUE(PKCS7_dataFinal(p7.get(), bio_in.get()));
+  bio_in.reset(BIO_new(BIO_s_mem()));
+  EXPECT_TRUE(PKCS7_decrypt(p7.get(), root_pkey.get(), /*certs*/ nullptr,
+                            bio_in.get(),
+                            /*flags*/ 0));
+  OPENSSL_memset(out_buf, '\0', sizeof(out_buf));
+  ASSERT_EQ((int)sizeof(out_buf),
+            BIO_read(bio_in.get(), out_buf, sizeof(out_buf)));
+  EXPECT_EQ(Bytes(buf, sizeof(buf)), Bytes(out_buf, sizeof(out_buf)));
+  bio_in.reset(BIO_new_mem_buf(out_buf, sizeof(out_buf)));
+  bio_out.reset(BIO_new(BIO_s_mem()));
+  EXPECT_TRUE(PKCS7_verify(p7.get(), certs.get(), store.get(), bio_in.get(),
+                           bio_out.get(), /*flags*/ 0));
+  OPENSSL_memset(out_buf, '\0', sizeof(out_buf));
+  EXPECT_EQ((int)sizeof(out_buf),
             BIO_read(bio_out.get(), out_buf, sizeof(out_buf)));
   EXPECT_EQ(Bytes(buf, sizeof(buf)), Bytes(out_buf, sizeof(out_buf)));
 }
