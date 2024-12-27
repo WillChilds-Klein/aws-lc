@@ -1938,13 +1938,13 @@ static bool ext_pre_shared_key_add_clienthello(const SSL_HANDSHAKE *hs,
                                                ssl_client_hello_type_t type) {
   const SSL *const ssl = hs->ssl;
   *out_needs_binder = false;
-  uint32_t obfuscated_ticket_age;
-  size_t binder_len;
   uint8_t identity_or_ticket[PSK_MAX_IDENTITY_LEN + 1];
   size_t identity_len;
+  uint32_t obfuscated_ticket_age;
+  size_t binder_len;
 
-  if (hs->config->psk_client_callback != NULL) {
-    obfuscated_ticket_age = 0;
+  // TODO [childw]
+  if (hs->config->psk_client_callback) {
     uint8_t psk_data[PSK_MAX_PSK_LEN];
     OPENSSL_memset(identity_or_ticket, 0, sizeof(identity_or_ticket));
     // No identity hint on client side in TLSv1.3
@@ -1954,20 +1954,21 @@ static bool ext_pre_shared_key_add_clienthello(const SSL_HANDSHAKE *hs,
     OPENSSL_cleanse(psk_data, sizeof(psk_data));
     if (identity_len == 0) {
       OPENSSL_PUT_ERROR(SSL, SSL_R_PSK_IDENTITY_NOT_FOUND);
-      ssl_send_alert(hs->ssl, SSL3_AL_FATAL, SSL_AD_HANDSHAKE_FAILURE);
       return false;
     }
+    obfuscated_ticket_age = 0;
+    binder_len = EVP_MD_size(EVP_sha256());
   } else if (!should_offer_psk(hs, type)) {
     return true;
   } else {
     assert(ssl->session.get());
+    identity_len = ssl->session->ticket.size();
+    OPENSSL_memcpy(identity_or_ticket, ssl->session->ticket.data(), identity_len);
     struct OPENSSL_timeval now;
     ssl_get_current_time(ssl, &now);
     uint32_t ticket_age = 1000 * (now.tv_sec - ssl->session->time);
     obfuscated_ticket_age = ticket_age + ssl->session->ticket_age_add;
     binder_len = EVP_MD_size(ssl_session_get_digest(ssl->session.get()));
-    identity_len = ssl->session->ticket.size();
-    OPENSSL_memcpy(identity_or_ticket, ssl->session->ticket.data(), identity_len);
   }
 
   // Fill in a placeholder zero binder of the appropriate length. It will be
