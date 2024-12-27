@@ -1899,7 +1899,7 @@ static bool should_offer_psk(const SSL_HANDSHAKE *hs,
     // TODO [childw] need to add server psk callback check here
   const SSL *const ssl = hs->ssl;
   printf("SHOULD?\n");
-  if (hs->max_version < TLS1_3_VERSION || (ssl->session == nullptr  && ssl->config->psk_client_callback == nullptr && ssl->config->psk_server_callback)||
+  if (hs->max_version < TLS1_3_VERSION || ssl->session == nullptr ||
       ssl_session_protocol_version(ssl->session.get()) < TLS1_3_VERSION ||
       // TODO(https://crbug.com/boringssl/275): Should we synthesize a
       // placeholder PSK, at least when we offer early data? Otherwise
@@ -1938,30 +1938,47 @@ static bool ext_pre_shared_key_add_clienthello(const SSL_HANDSHAKE *hs,
                                                ssl_client_hello_type_t type) {
   const SSL *const ssl = hs->ssl;
   *out_needs_binder = false;
-  printf("SHOULD OFFER PSK?\n");
-  if (!should_offer_psk(hs, type)) {
-  printf("NOPE\n!");
+  uint32_t obfuscated_ticket_age;
+  size_t binder_len;
+  uint8_t identity_or_ticket[PSK_MAX_IDENTITY_LEN + 1];
+  size_t identity_len;
+
+  if (hs->config->psk_client_callback != NULL) {
+    obfuscated_ticket_age = 0;
+    uint8_t psk_data[PSK_MAX_PSK_LEN];
+    OPENSSL_memset(identity_or_ticket, 0, sizeof(identity_or_ticket));
+    // No identity hint on client side in TLSv1.3
+    identity_len = hs->config->psk_client_callback(
+        hs->ssl, /*hint*/nullptr, (char*) identity_or_ticket, sizeof(identity_or_ticket),
+        psk_data, sizeof(psk_data));
+    OPENSSL_cleanse(psk_data, sizeof(psk_data));
+    if (identity_len == 0) {
+      OPENSSL_PUT_ERROR(SSL, SSL_R_PSK_IDENTITY_NOT_FOUND);
+      ssl_send_alert(hs->ssl, SSL3_AL_FATAL, SSL_AD_HANDSHAKE_FAILURE);
+      return false;
+    }
+  } else if (!should_offer_psk(hs, type)) {
     return true;
+  } else {
+    assert(ssl->session.get());
+    struct OPENSSL_timeval now;
+    ssl_get_current_time(ssl, &now);
+    uint32_t ticket_age = 1000 * (now.tv_sec - ssl->session->time);
+    obfuscated_ticket_age = ticket_age + ssl->session->ticket_age_add;
+    binder_len = EVP_MD_size(ssl_session_get_digest(ssl->session.get()));
+    identity_len = ssl->session->ticket.size();
+    OPENSSL_memcpy(identity_or_ticket, ssl->session->ticket.data(), identity_len);
   }
-
-  printf("YEP!\n");
-
-  struct OPENSSL_timeval now;
-  ssl_get_current_time(ssl, &now);
-  uint32_t ticket_age = 1000 * (now.tv_sec - ssl->session->time);
-  uint32_t obfuscated_ticket_age = ticket_age + ssl->session->ticket_age_add;
 
   // Fill in a placeholder zero binder of the appropriate length. It will be
   // computed and filled in later after length prefixes are computed.
-  size_t binder_len = EVP_MD_size(ssl_session_get_digest(ssl->session.get()));
 
   CBB contents, identity, ticket, binders, binder;
   if (!CBB_add_u16(out, TLSEXT_TYPE_pre_shared_key) ||
       !CBB_add_u16_length_prefixed(out, &contents) ||
       !CBB_add_u16_length_prefixed(&contents, &identity) ||
       !CBB_add_u16_length_prefixed(&identity, &ticket) ||
-      !CBB_add_bytes(&ticket, ssl->session->ticket.data(),
-                     ssl->session->ticket.size()) ||
+      !CBB_add_bytes(&ticket, identity_or_ticket, identity_len) ||
       !CBB_add_u32(&identity, obfuscated_ticket_age) ||
       !CBB_add_u16_length_prefixed(&contents, &binders) ||
       !CBB_add_u8_length_prefixed(&binders, &binder) ||
@@ -2006,6 +2023,8 @@ bool ssl_ext_pre_shared_key_parse_clienthello(
     *out_alert = SSL_AD_ILLEGAL_PARAMETER;
     return false;
   }
+
+  // TODO [childw] use callback here
 
   // We only process the first PSK identity since we don't support pure PSK.
   CBS identities, binders;
