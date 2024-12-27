@@ -246,8 +246,16 @@ static enum ssl_hs_wait_t do_select_parameters(SSL_HANDSHAKE *hs) {
     return ssl_hs_error;
   }
 
-  // Negotiate the signature algorithms.
-  if (!tls1_choose_signature_algorithm(hs, &hs->signature_algorithm)) {
+  // TODO [childw] check for psk extension here
+  CBS unused;
+  bool client_offered_psk = ssl_client_hello_get_extension(
+    &client_hello, &unused, TLSEXT_TYPE_psk_key_exchange_modes);
+
+  printf("CLIENT OFFERED PSK? %s\n", client_offered_psk ? "y" : "n");
+
+  // Negotiate the signature algorithms
+  if (!tls1_choose_signature_algorithm(hs, &hs->signature_algorithm) &&
+      !client_offered_psk) {
     ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_HANDSHAKE_FAILURE);
     return ssl_hs_error;
   }

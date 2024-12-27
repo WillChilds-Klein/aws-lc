@@ -360,6 +360,7 @@ bool ssl_add_client_hello(SSL_HANDSHAKE *hs) {
   // Now that the length prefixes have been computed, fill in the placeholder
   // PSK binder.
   if (needs_psk_binder) {
+      printf("NEEDS BINDER!!\n");
     // ClientHelloOuter cannot have a PSK binder. Otherwise the
     // ClientHellOuterAAD computation would break.
     assert(type != ssl_client_hello_outer);
@@ -367,6 +368,8 @@ bool ssl_add_client_hello(SSL_HANDSHAKE *hs) {
                                 /*out_binder_len=*/0)) {
       return false;
     }
+  } else {
+      printf("DOES NOT NEED BINDER!!\n");
   }
 
   return ssl->method->add_message(ssl, std::move(msg));
@@ -1410,6 +1413,7 @@ static enum ssl_hs_wait_t do_send_client_key_exchange(SSL_HANDSHAKE *hs) {
   SSL *const ssl = hs->ssl;
   ScopedCBB cbb;
   CBB body;
+
   if (!ssl->method->init_message(ssl, cbb.get(), &body,
                                  SSL3_MT_CLIENT_KEY_EXCHANGE)) {
     return ssl_hs_error;
@@ -1442,10 +1446,12 @@ static enum ssl_hs_wait_t do_send_client_key_exchange(SSL_HANDSHAKE *hs) {
     }
   }
 
+  printf("SHOULD PREPARE PSK? %s\n", (alg_a & SSL_aPSK) ? "y" : "n");
   // If using a PSK key exchange, prepare the pre-shared key.
   unsigned psk_len = 0;
   uint8_t psk[PSK_MAX_PSK_LEN];
   if (alg_a & SSL_aPSK) {
+      printf("PREPARING PSK!!\n");
     if (hs->config->psk_client_callback == NULL) {
       OPENSSL_PUT_ERROR(SSL, SSL_R_PSK_NO_CLIENT_CB);
       return ssl_hs_error;
@@ -1468,6 +1474,7 @@ static enum ssl_hs_wait_t do_send_client_key_exchange(SSL_HANDSHAKE *hs) {
       return ssl_hs_error;
     }
 
+      printf("WRITING PSK %s!!\n", identity);
     // Write out psk_identity.
     CBB child;
     if (!CBB_add_u16_length_prefixed(&body, &child) ||

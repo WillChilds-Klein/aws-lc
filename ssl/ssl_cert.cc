@@ -796,7 +796,12 @@ bool ssl_on_certificate_selected(SSL_HANDSHAKE *hs) {
 }
 
 bool ssl_handshake_load_local_pubkey(SSL_HANDSHAKE *hs) {
-  if (!ssl_cert_check_cert_private_keys_usage(hs->config->cert.get())) {
+  bool psk_enabled = false;
+  psk_enabled |= hs->config->psk_client_callback != nullptr;
+  psk_enabled |= hs->config->psk_server_callback != nullptr;
+
+  if (!ssl_cert_check_cert_private_keys_usage(hs->config->cert.get()) &&
+      !psk_enabled) {
     return false;
   }
 
@@ -810,7 +815,13 @@ bool ssl_handshake_load_local_pubkey(SSL_HANDSHAKE *hs) {
   } else {
     hs->local_pubkey = ssl_cert_parse_leaf_pubkey(chain);
   }
-  return hs->local_pubkey != nullptr;
+
+  // Allow public key to be missing if PSK is enabled
+  if (hs->local_pubkey == nullptr && !psk_enabled) {
+    return false;
+  }
+
+  return true;
 }
 
 

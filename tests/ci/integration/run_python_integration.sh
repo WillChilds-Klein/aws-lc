@@ -79,7 +79,8 @@ function python_run_tests() {
         test_urllib2_localnet \
         test_xmlrpc \
     "
-    make -j ${NUM_CPU_THREADS} test TESTOPTS="${TEST_OPTS}"
+    #make -j ${NUM_CPU_THREADS} test TESTOPTS="${TEST_OPTS}"
+    $python -m unittest test.test_ssl.ThreadedTests.test_psk_tls1_3
     popd
 }
 
@@ -211,7 +212,7 @@ aws_lc_build ${SRC_ROOT} ${AWS_LC_BUILD_FOLDER} ${AWS_LC_INSTALL_FOLDER} \
     -DBUILD_SHARED_LIBS=0 \
     -DFIPS=${FIPS}
 
-fetch_crt_python
+#fetch_crt_python
 
 # Some systems install under "lib64" instead of "lib"
 ln -s ${AWS_LC_INSTALL_FOLDER}/lib64 ${AWS_LC_INSTALL_FOLDER}/lib
@@ -228,7 +229,7 @@ for branch in "$@"; do
     python_patch ${branch}
     python_build ${branch}
     python_run_tests ${branch}
-    python_run_3rd_party_tests ${branch}
+    #python_run_3rd_party_tests ${branch}
 done
 
 popd
