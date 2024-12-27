@@ -473,8 +473,11 @@ static bool tls13_psk_binder(uint8_t *out, size_t *out_len,
 bool tls13_write_psk_binder(const SSL_HANDSHAKE *hs,
                             const SSLTranscript &transcript, Span<uint8_t> msg,
                             size_t *out_binder_len) {
+  // TODO [childw] need to allow writing the binder w/o active session....
   const SSL *const ssl = hs->ssl;
-  const EVP_MD *digest = ssl_session_get_digest(ssl->session.get());
+  const EVP_MD *digest = ssl->session
+    ? ssl_session_get_digest(ssl->session.get())
+    : EVP_sha256();
   const size_t hash_len = EVP_MD_size(digest);
   // We only offer one PSK, so the binders are a u16 and u8 length
   // prefix, followed by the binder. The caller is assumed to have constructed
