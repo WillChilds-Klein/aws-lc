@@ -1896,8 +1896,10 @@ static bool ext_ec_point_add_serverhello(SSL_HANDSHAKE *hs, CBB *out) {
 
 static bool should_offer_psk(const SSL_HANDSHAKE *hs,
                              ssl_client_hello_type_t type) {
+    // TODO [childw] need to add server psk callback check here
   const SSL *const ssl = hs->ssl;
-  if (hs->max_version < TLS1_3_VERSION || ssl->session == nullptr ||
+  printf("SHOULD?\n");
+  if (hs->max_version < TLS1_3_VERSION || (ssl->session == nullptr  && ssl->config->psk_client_callback == nullptr && ssl->config->psk_server_callback)||
       ssl_session_protocol_version(ssl->session.get()) < TLS1_3_VERSION ||
       // TODO(https://crbug.com/boringssl/275): Should we synthesize a
       // placeholder PSK, at least when we offer early data? Otherwise
@@ -1907,6 +1909,7 @@ static bool should_offer_psk(const SSL_HANDSHAKE *hs,
     return false;
   }
 
+  printf("MAYBE?\n");
   // Per RFC 8446 section 4.1.4, skip offering the session if the selected
   // cipher in HelloRetryRequest does not match. This avoids performing the
   // transcript hash transformation for multiple hashes.
@@ -1915,6 +1918,7 @@ static bool should_offer_psk(const SSL_HANDSHAKE *hs,
     return false;
   }
 
+  printf("YES\n");
   return true;
 }
 
@@ -1934,9 +1938,13 @@ static bool ext_pre_shared_key_add_clienthello(const SSL_HANDSHAKE *hs,
                                                ssl_client_hello_type_t type) {
   const SSL *const ssl = hs->ssl;
   *out_needs_binder = false;
+  printf("SHOULD OFFER PSK?\n");
   if (!should_offer_psk(hs, type)) {
+  printf("NOPE\n!");
     return true;
   }
+
+  printf("YEP!\n");
 
   struct OPENSSL_timeval now;
   ssl_get_current_time(ssl, &now);
@@ -4136,6 +4144,17 @@ bool tls1_choose_signature_algorithm(SSL_HANDSHAKE *hs, uint16_t *out) {
   CERT *cert = hs->config->cert.get();
   DC *dc = cert->dc.get();
 
+  printf("!!! PSK %s :: VERS %d !!!\n",
+          (hs->new_cipher->algorithm_auth & SSL_aPSK) ? "y" : "n",
+          ssl_protocol_version(ssl));
+  // Before TLSv1.3, PSK was negotiated as part of the ciphersuite. No
+  // signature algorithm then needs to be selected.
+  if ((ssl_protocol_version(ssl) < TLS1_3_VERSION &&
+        (hs->new_cipher->algorithm_auth & SSL_aPSK))) {
+  printf("NO EARLY RETURN!!!\n");
+    return true;
+  }
+
   // Before TLS 1.2, the signature algorithm isn't negotiated as part of the
   // handshake.
   if (ssl_protocol_version(ssl) < TLS1_2_VERSION) {
@@ -4170,6 +4189,8 @@ bool tls1_choose_signature_algorithm(SSL_HANDSHAKE *hs, uint16_t *out) {
       }
     }
   }
+
+  printf("OH NOES!!!\n");
 
   OPENSSL_PUT_ERROR(SSL, SSL_R_NO_COMMON_SIGNATURE_ALGORITHMS);
   return false;
