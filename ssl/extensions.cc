@@ -1898,7 +1898,7 @@ static bool should_offer_psk(const SSL_HANDSHAKE *hs,
                              ssl_client_hello_type_t type) {
     // TODO [childw] need to add server psk callback check here
   const SSL *const ssl = hs->ssl;
-  printf("SHOULD?\n");
+  fprintf(stderr, "SHOULD?\n");
   if (hs->max_version < TLS1_3_VERSION || ssl->session == nullptr ||
       ssl_session_protocol_version(ssl->session.get()) < TLS1_3_VERSION ||
       // TODO(https://crbug.com/boringssl/275): Should we synthesize a
@@ -1909,7 +1909,7 @@ static bool should_offer_psk(const SSL_HANDSHAKE *hs,
     return false;
   }
 
-  printf("MAYBE?\n");
+  fprintf(stderr, "MAYBE?\n");
   // Per RFC 8446 section 4.1.4, skip offering the session if the selected
   // cipher in HelloRetryRequest does not match. This avoids performing the
   // transcript hash transformation for multiple hashes.
@@ -1918,7 +1918,7 @@ static bool should_offer_psk(const SSL_HANDSHAKE *hs,
     return false;
   }
 
-  printf("YES\n");
+  fprintf(stderr, "YES\n");
   return true;
 }
 
@@ -4164,14 +4164,14 @@ bool tls1_choose_signature_algorithm(SSL_HANDSHAKE *hs, uint16_t *out) {
   CERT *cert = hs->config->cert.get();
   DC *dc = cert->dc.get();
 
-  printf("!!! PSK %s :: VERS %d !!!\n",
+  fprintf(stderr, "!!! PSK %s :: VERS %d !!!\n",
           (hs->new_cipher->algorithm_auth & SSL_aPSK) ? "y" : "n",
           ssl_protocol_version(ssl));
   // Before TLSv1.3, PSK was negotiated as part of the ciphersuite. No
   // signature algorithm then needs to be selected.
   if ((ssl_protocol_version(ssl) < TLS1_3_VERSION &&
         (hs->new_cipher->algorithm_auth & SSL_aPSK))) {
-  printf("NO EARLY RETURN!!!\n");
+  fprintf(stderr, "NO EARLY RETURN!!!\n");
     return true;
   }
 
@@ -4210,7 +4210,7 @@ bool tls1_choose_signature_algorithm(SSL_HANDSHAKE *hs, uint16_t *out) {
     }
   }
 
-  printf("OH NOES!!!\n");
+  fprintf(stderr, "OH NOES!!!\n");
 
   OPENSSL_PUT_ERROR(SSL, SSL_R_NO_COMMON_SIGNATURE_ALGORITHMS);
   return false;
