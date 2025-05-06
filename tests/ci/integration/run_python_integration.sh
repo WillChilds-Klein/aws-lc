@@ -221,8 +221,8 @@ mkdir -p ${PYTHON_SRC_FOLDER}
 pushd ${PYTHON_SRC_FOLDER}
 
 # Some environments disable IPv6 by default
-which sysctl && ( sysctl -w net.ipv6.conf.all.disable_ipv6=0 || /bin/true )
-echo 0 >/proc/sys/net/ipv6/conf/all/disable_ipv6 || /bin/true
+which sysctl && ( sysctl -w net.ipv6.conf.all.disable_ipv6=0 || true )
+echo 0 >/proc/sys/net/ipv6/conf/all/disable_ipv6 || true
 
 # NOTE: As we add more versions to support, we may want to parallelize here
 for branch in "$@"; do
