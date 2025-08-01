@@ -611,6 +611,7 @@ BSSL_NAMESPACE_BEGIN
 // SSL_kPSK is only set for plain PSK, not ECDHE_PSK.
 #define SSL_kPSK 0x00000004u
 #define SSL_kGENERIC 0x00000008u
+#define SSL_kDHE 0x00000010u
 
 // Bits for |algorithm_auth| (server authentication).
 #define SSL_aRSA 0x00000001u
