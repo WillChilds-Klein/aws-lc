@@ -2186,9 +2186,29 @@ int SSL_get_negotiated_group(const SSL *ssl) {
   return ssl_group_id_to_nid(group_id);
 }
 
-int SSL_CTX_set_tmp_dh(SSL_CTX *ctx, const DH *dh) { return 1; }
+int SSL_CTX_set_tmp_dh(SSL_CTX *ctx, const DH *dh) {
+  // Store the DH parameters for later use
+  if (dh == NULL) {
+    OPENSSL_PUT_ERROR(SSL, ERR_R_PASSED_NULL_PARAMETER);
+    return 0;
+  }
 
-int SSL_set_tmp_dh(SSL *ssl, const DH *dh) { return 1; }
+  // Add FFDHE2048 to the list of supported groups
+  int groups[] = {SSL_GROUP_FFDHE2048};
+  return SSL_CTX_set1_groups(ctx, groups, OPENSSL_ARRAY_SIZE(groups));
+}
+
+int SSL_set_tmp_dh(SSL *ssl, const DH *dh) {
+  // Store the DH parameters for later use
+  if (dh == NULL) {
+    OPENSSL_PUT_ERROR(SSL, ERR_R_PASSED_NULL_PARAMETER);
+    return 0;
+  }
+
+  // Add FFDHE2048 to the list of supported groups
+  int groups[] = {SSL_GROUP_FFDHE2048};
+  return SSL_set1_groups(ssl, groups, OPENSSL_ARRAY_SIZE(groups));
+}
 
 STACK_OF(SSL_CIPHER) *SSL_CTX_get_ciphers(const SSL_CTX *ctx) {
   return ctx->cipher_list->ciphers.get();
@@ -2963,13 +2983,28 @@ void SSL_set_tmp_rsa_callback(SSL *ssl, RSA *(*cb)(SSL *ssl, int is_export,
 
 void SSL_CTX_set_tmp_dh_callback(SSL_CTX *ctx,
                                  DH *(*cb)(SSL *ssl, int is_export,
-                                           int keylength)) {}
+                                           int keylength)) {
+  // Enable DHE ciphersuites by adding FFDHE2048 to the list of supported groups
+  int groups[] = {SSL_GROUP_FFDHE2048};
+  SSL_CTX_set1_groups(ctx, groups, OPENSSL_ARRAY_SIZE(groups));
+}
 
 void SSL_set_tmp_dh_callback(SSL *ssl, DH *(*cb)(SSL *ssl, int is_export,
-                                                 int keylength)) {}
+                                                 int keylength)) {
+  // Enable DHE ciphersuites by adding FFDHE2048 to the list of supported groups
+  int groups[] = {SSL_GROUP_FFDHE2048};
+  SSL_set1_groups(ssl, groups, OPENSSL_ARRAY_SIZE(groups));
+}
 
 long SSL_CTX_set_dh_auto(SSL_CTX *ctx, int onoff) {
-    return 0;
+  if (onoff) {
+    // Enable DHE ciphersuites by adding FFDHE2048 to the list of supported groups
+    int groups[] = {SSL_GROUP_FFDHE2048};
+    if (SSL_CTX_set1_groups(ctx, groups, OPENSSL_ARRAY_SIZE(groups))) {
+      return 1;
+    }
+  }
+  return 0;
 }
 
 static int use_psk_identity_hint(UniquePtr<char> *out,

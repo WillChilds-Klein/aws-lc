@@ -2792,6 +2792,7 @@ OPENSSL_EXPORT int SSL_get_negotiated_group(const SSL *ssl);
 #define SSL_GROUP_SECP384R1 24
 #define SSL_GROUP_SECP521R1 25
 #define SSL_GROUP_X25519 29
+#define SSL_GROUP_FFDHE2048 256  // RFC 7919 ffdhe2048
 
 // SSL_GROUP_SECP256R1_KYBER768_DRAFT00 is defined at
 // https://datatracker.ietf.org/doc/html/draft-kwiatkowski-tls-ecdhe-kyber

@@ -22,6 +22,7 @@
 #include <openssl/bn.h>
 #include <openssl/bytestring.h>
 #include <openssl/curve25519.h>
+#include <openssl/dh.h>
 #include <openssl/ec.h>
 #include <openssl/err.h>
 #include <openssl/evp.h>
@@ -40,6 +41,105 @@
 BSSL_NAMESPACE_BEGIN
 
 namespace {
+
+class DHEKeyShare : public SSLKeyShare {
+ public:
+  DHEKeyShare(uint16_t group_id) : group_id_(group_id), dh_(nullptr) {}
+
+  ~DHEKeyShare() override {
+    if (dh_ != nullptr) {
+      DH_free(dh_);
+    }
+  }
+
+  uint16_t GroupID() const override { return group_id_; }
+
+  bool Offer(CBB *out) override {
+    // Create a new DH key
+    dh_ = DH_new();
+    if (dh_ == nullptr) {
+      return false;
+    }
+
+    // Use the default parameters (2048-bit MODP Group with 256-bit Prime Order Subgroup)
+    if (!DH_generate_parameters_ex(dh_, 2048, DH_GENERATOR_2, nullptr) ||
+        !DH_generate_key(dh_)) {
+      return false;
+    }
+
+    // Serialize the public key
+    const BIGNUM *pub_key = DH_get0_pub_key(dh_);
+    if (pub_key == nullptr) {
+      return false;
+    }
+
+    size_t len = BN_num_bytes(pub_key);
+    uint8_t *buf = NULL;
+    if (!CBB_add_space(out, &buf, len)) {
+      return false;
+    }
+    BN_bn2bin(pub_key, buf);
+    return true;
+  }
+
+  bool Finish(Array<uint8_t> *out_secret, uint8_t *out_alert,
+              Span<const uint8_t> peer_key) override {
+    assert(dh_);
+    *out_alert = SSL_AD_INTERNAL_ERROR;
+
+    // Convert peer's public key to BIGNUM
+    BIGNUM *peer_pub_key = BN_bin2bn(peer_key.data(), peer_key.size(), nullptr);
+    if (peer_pub_key == nullptr) {
+      OPENSSL_PUT_ERROR(SSL, SSL_R_BAD_DH_P_LENGTH);
+      *out_alert = SSL_AD_ILLEGAL_PARAMETER;
+      return false;
+    }
+
+    // Compute the shared secret
+    Array<uint8_t> secret;
+    int secret_len = DH_size(dh_);
+    if (!secret.Init(secret_len)) {
+      BN_free(peer_pub_key);
+      return false;
+    }
+
+    int ret = DH_compute_key(secret.data(), peer_pub_key, dh_);
+    BN_free(peer_pub_key);
+
+    if (ret <= 0) {
+      OPENSSL_PUT_ERROR(SSL, SSL_R_BAD_DH_P_LENGTH);
+      *out_alert = SSL_AD_ILLEGAL_PARAMETER;
+      return false;
+    }
+
+    // Adjust the secret size if needed
+    if (ret < secret_len) {
+      Array<uint8_t> new_secret;
+      if (!new_secret.Init(ret) ||
+          !OPENSSL_memcpy(new_secret.data(), secret.data(), ret)) {
+        return false;
+      }
+      secret = std::move(new_secret);
+    }
+
+    *out_secret = std::move(secret);
+    return true;
+  }
+
+  bool SerializePrivateKey(CBB *out) override {
+    // Not implemented for DHE
+    return false;
+  }
+
+  bool DeserializePrivateKey(CBS *in) override {
+    // Not implemented for DHE
+    return false;
+  }
+
+ private:
+  uint16_t group_id_;
+  DH *dh_;
+};
 
 class ECKeyShare : public SSLKeyShare {
  public:
@@ -784,6 +884,8 @@ UniquePtr<SSLKeyShare> SSLKeyShare::Create(uint16_t group_id) {
       return MakeUnique<ECKeyShare>(EC_group_p521(), SSL_GROUP_SECP521R1);
     case SSL_GROUP_X25519:
       return MakeUnique<X25519KeyShare>();
+    case SSL_GROUP_FFDHE2048:
+      return MakeUnique<DHEKeyShare>(SSL_GROUP_FFDHE2048);
     case SSL_GROUP_KYBER768_R3:
       // Kyber, as a standalone group, is not a NamedGroup; however, we
       // need to create Kyber key shares as part of hybrid groups.
