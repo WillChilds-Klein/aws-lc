@@ -1,0 +1,14 @@
+--- a/servers/slapd/back-mdb/back-mdb.h
++++ b/servers/slapd/back-mdb/back-mdb.h
+@@ -20,6 +20,11 @@
+ #include <portable.h>
+ #include "slap.h"
+ #include "lmdb.h"
++/* Disable MDB_ENCRYPT to avoid linker failures with mdb_modunload,
++ * mdb_modsetup, and mdb_modload from liblmdb module.c.
++ * Upstream OpenLDAP ITS#9009 LMDB 1.0 integration is in progress.
++ */
++#undef MDB_ENCRYPT
+
+ LDAP_BEGIN_DECL
+
